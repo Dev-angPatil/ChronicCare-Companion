@@ -35,14 +35,22 @@ const SEED_MEDICATIONS = [
   { id: "amlodipine", name: "Amlodipine", dose: "5mg", frequency: "Once daily (Morning)", taken: false, remainingHours: 0 }
 ];
 
+function getRelativeDateStr(daysAgo) {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = d.toLocaleDateString("en-US", { month: "short" });
+  return `${month} ${day}`;
+}
+
 const SEED_LOGS = [
-  { date: "May 27", glucose: 110, bp: "125/82", meal: "yes", symptoms: "Feeling fine" },
-  { date: "May 28", glucose: 145, bp: "128/84", meal: "yes", symptoms: "Mild headache" },
-  { date: "May 29", glucose: 95, bp: "120/78", meal: "yes", symptoms: "Good energy" },
-  { date: "May 30", glucose: 122, bp: "135/85", meal: "yes", symptoms: "Tired in evening" },
-  { date: "May 31", glucose: 105, bp: "122/80", meal: "yes", symptoms: "None" },
-  { date: "Jun 01", glucose: 155, bp: "130/82", meal: "yes", symptoms: "After heavy snack" },
-  { date: "Jun 02", glucose: 178, bp: "138/88", meal: "skipped", symptoms: "Felt tired, skipped breakfast" }
+  { date: getRelativeDateStr(6), glucose: 110, bp: "125/82", meal: "yes", symptoms: "Feeling fine" },
+  { date: getRelativeDateStr(5), glucose: 145, bp: "128/84", meal: "yes", symptoms: "Mild headache" },
+  { date: getRelativeDateStr(4), glucose: 95, bp: "120/78", meal: "yes", symptoms: "Good energy" },
+  { date: getRelativeDateStr(3), glucose: 122, bp: "135/85", meal: "yes", symptoms: "Tired in evening" },
+  { date: getRelativeDateStr(2), glucose: 105, bp: "122/80", meal: "yes", symptoms: "None" },
+  { date: getRelativeDateStr(1), glucose: 155, bp: "130/82", meal: "yes", symptoms: "After heavy snack" },
+  { date: getRelativeDateStr(0), glucose: 178, bp: "138/88", meal: "skipped", symptoms: "Felt tired, skipped breakfast" }
 ];
 
 const SEED_MESSAGES = [

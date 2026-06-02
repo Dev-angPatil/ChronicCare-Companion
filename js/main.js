@@ -40,6 +40,12 @@ import {
   simulateBleSync 
 } from "./bluetooth.js";
 
+import {
+  computeWellnessScore,
+  calculateStreak,
+  analyzeTrends
+} from "./analytics.js";
+
 /* ----------------------------------------------------
    APPLICATION LOCAL STATE CACHE
 ---------------------------------------------------- */
@@ -74,6 +80,7 @@ You help users understand their symptoms, medications, diet, and daily readings 
 - Clinical Classification: {{bp_stage}}
 - Care Team Coordinator: {{physician}} ({{physician_phone}}) at {{physician_clinic}}
 - Today's check-in status: {{checkin}}
+- Wellness Score & Active Trends: {{wellness_trends}}
 
 ## RESPONSE RULES
 
@@ -218,6 +225,7 @@ async function main() {
     loadProfileToForm();
     updateThemeUI("organic");
     checkSavedCiphertextStatus();
+    updateWellnessDashboard();
     compileSystemPrompt();
     renderPillbox();
     renderCalendar();
@@ -312,6 +320,7 @@ function setupEventHandlers() {
     document.getElementById("banner-patient-name").textContent = updatedProfile.name;
     document.getElementById("banner-patient-info").textContent = `${updatedProfile.conditions} • ${updatedProfile.medications.substring(0, 45)}...`;
 
+    updateWellnessDashboard();
     compileSystemPrompt();
     populateSuggestionChips();
     renderChart(); // Redraw chart target bounds if changed
@@ -509,6 +518,7 @@ function compileSystemPrompt() {
   if (!p) return "";
 
   let prompt = SYSTEM_PROMPT_TEMPLATE;
+  const wellnessTrendsVal = `Score: ${p.wellnessScore || "--"} / 100 (${p.activeTrends || "Stable"})`;
   
   // Variables replacement
   prompt = prompt.replace("{{user_name}}", p.name);
@@ -520,6 +530,7 @@ function compileSystemPrompt() {
   prompt = prompt.replace("{{physician_phone}}", p.physicianPhone);
   prompt = prompt.replace("{{physician_clinic}}", p.physicianClinic);
   prompt = prompt.replace("{{checkin}}", p.checkin);
+  prompt = prompt.replace("{{wellness_trends}}", wellnessTrendsVal);
 
   // In HTML diagnostic container, render the prompt with highlight overlays
   let highlightedPrompt = SYSTEM_PROMPT_TEMPLATE
@@ -531,7 +542,8 @@ function compileSystemPrompt() {
     .replace("{{physician}}", `<span class="prompt-highlight">${p.physicianName}</span>`)
     .replace("{{physician_phone}}", `<span class="prompt-highlight">${p.physicianPhone}</span>`)
     .replace("{{physician_clinic}}", `<span class="prompt-highlight">${p.physicianClinic}</span>`)
-    .replace("{{checkin}}", `<span class="prompt-highlight">${p.checkin}</span>`);
+    .replace("{{checkin}}", `<span class="prompt-highlight">${p.checkin}</span>`)
+    .replace("{{wellness_trends}}", `<span class="prompt-highlight">${wellnessTrendsVal}</span>`);
 
   DOM.liveSystemPrompt.innerHTML = highlightedPrompt;
   return prompt;
@@ -573,6 +585,7 @@ async function logHealthMetric(glucose, bp, symptom, meal) {
   await setProfile(LOCAL_STATE.profile);
 
   // Redraw
+  updateWellnessDashboard();
   renderCalendar();
   renderChart();
   compileSystemPrompt();
@@ -636,34 +649,41 @@ function renderPillbox() {
 async function logPillTaken(med) {
   med.taken = true;
   await updateMedication(med);
+  updateWellnessDashboard();
   renderPillbox();
   renderCalendar();
+  compileSystemPrompt();
   addSystemEventMessage(`Adherence recorded: Taken ${med.name} ${med.dose}.`);
 }
 
 function updateStreakCompliance() {
   const today = getFormattedTodayDate();
-  const todayLog = LOCAL_STATE.logs.find(l => l.date === today);
-  const medsAllTaken = LOCAL_STATE.medications.every(m => m.taken);
-
-  let streak = 5;
-  if (todayLog && medsAllTaken) {
-    streak = 6;
-  }
+  const streak = calculateStreak(LOCAL_STATE.logs, LOCAL_STATE.medications, today);
   DOM.streakCounter.textContent = `🔥 ${streak} Day Streak`;
 }
 
 function renderCalendar() {
   DOM.calendarGrid.innerHTML = "";
-  const todayNum = 2; // Jun 2nd
+  
+  // Calculate relative dates for the past 14 days
+  const days = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dayNum = d.getDate();
+    
+    // Manual formatting matching getFormattedTodayDate
+    const dayStr = String(d.getDate()).padStart(2, "0");
+    const monthStr = d.toLocaleDateString("en-US", { month: "short" });
+    const formatted = `${monthStr} ${dayStr}`;
+    
+    const isToday = i === 0;
+    days.push({ formatted, dayNum, isToday });
+  }
 
-  for (let i = 20; i <= 31; i++) {
-    createDayNode(`May ${i}`, i, getDayStatus(`May ${i}`));
-  }
-  for (let i = 1; i <= 2; i++) {
-    const active = i === todayNum;
-    createDayNode(`Jun 0${i}`, i, getDayStatus(`Jun 0${i}`), active);
-  }
+  days.forEach(day => {
+    createDayNode(day.formatted, day.dayNum, getDayStatus(day.formatted), day.isToday);
+  });
 }
 
 function createDayNode(fullDate, displayNum, status, active = false) {
@@ -686,16 +706,76 @@ function getDayStatus(dateStr) {
     return "none";
   }
 
-  // Mock calendar log status indicators matching static seeds
-  if (dateStr === "Jun 01") return "full";
-  if (dateStr === "May 31") return "full";
-  if (dateStr === "May 30") return "partial";
-  if (dateStr === "May 29") return "full";
-  if (dateStr === "May 28") return "full";
-  if (dateStr === "May 27") return "full";
-  if (dateStr === "May 26") return "none";
+  if (log) {
+    if (log.glucose !== null && log.bp !== null) return "full";
+    return "partial";
+  }
   
-  return "full";
+  return "none";
+}
+
+function updateWellnessDashboard() {
+  const targets = {
+    glucoseFastingTargetMin: LOCAL_STATE.profile ? LOCAL_STATE.profile.glucoseFastingTargetMin : 80,
+    glucoseFastingTargetMax: LOCAL_STATE.profile ? LOCAL_STATE.profile.glucoseFastingTargetMax : 130,
+    glucosePostprandialMax: LOCAL_STATE.profile ? LOCAL_STATE.profile.glucosePostprandialMax : 180,
+    glucoseHypoThreshold: LOCAL_STATE.profile ? LOCAL_STATE.profile.glucoseHypoThreshold : 70,
+    bpSystolicTargetMax: LOCAL_STATE.profile ? LOCAL_STATE.profile.bpSystolicTargetMax : 130,
+    bpDiastolicTargetMax: LOCAL_STATE.profile ? LOCAL_STATE.profile.bpDiastolicTargetMax : 80
+  };
+
+  if (!LOCAL_STATE.profile) return;
+
+  // 1. Compute wellness score
+  const score = computeWellnessScore(LOCAL_STATE.logs, LOCAL_STATE.medications, targets);
+  LOCAL_STATE.profile.wellnessScore = score;
+  const scoreValEl = document.getElementById("wellness-score-val");
+  if (scoreValEl) scoreValEl.textContent = score;
+
+  // 2. Set circle dashoffset (radius = 34, perimeter = 213.63)
+  const circle = document.getElementById("wellness-progress-ring");
+  if (circle) {
+    const perimeter = 213.63;
+    const offset = perimeter - (score / 100) * perimeter;
+    circle.style.strokeDashoffset = offset;
+  }
+
+  // 3. Summarize status description
+  const summaryDesc = document.getElementById("wellness-summary-desc");
+  if (summaryDesc) {
+    if (score >= 90) {
+      summaryDesc.textContent = "Excellent compliance! All clinical targets and medication schedules are fully optimized today.";
+    } else if (score >= 75) {
+      summaryDesc.textContent = "Good progress. Stay consistent with your daily readings and pillbox logs to optimize outcomes.";
+    } else {
+      summaryDesc.textContent = "Attention advised. Some readings are out of range or medication doses were missed. Check recommendations below.";
+    }
+  }
+
+  // 4. Run Trend Engine Analysis
+  const trendResult = analyzeTrends(LOCAL_STATE.logs, targets);
+  LOCAL_STATE.profile.activeTrends = trendResult.insights.filter(i => i.startsWith("⚠️") || i.startsWith("📉")).join(" | ") || "Stable readings, no active anomalies detected.";
+
+  const insightsCard = document.getElementById("insights-alert-card");
+  const insightsList = document.getElementById("insights-list");
+
+  if (insightsList && insightsCard) {
+    insightsList.innerHTML = "";
+    if (trendResult.insights.length > 0) {
+      insightsCard.classList.remove("hidden");
+      trendResult.insights.forEach(insight => {
+        const li = document.createElement("li");
+        if (insight.startsWith("⚠️") || insight.includes("critical") || insight.includes("rising") || insight.includes("skipped")) {
+          li.innerHTML = `<span class="warning" style="color: var(--color-danger); font-weight: 600;">${insight}</span>`;
+        } else {
+          li.innerHTML = `<span>${insight}</span>`;
+        }
+        insightsList.appendChild(li);
+      });
+    } else {
+      insightsCard.classList.add("hidden");
+    }
+  }
 }
 
 function renderChart() {
@@ -1338,7 +1418,10 @@ function generateConsultationReport() {
 ---------------------------------------------------- */
 
 function getFormattedTodayDate() {
-  return "Jun 02"; // Static seed helper matching Jun 2nd today date
+  const d = new Date();
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = d.toLocaleDateString("en-US", { month: "short" });
+  return `${month} ${day}`;
 }
 
 function getGreetingTime() {

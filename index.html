@@ -61,6 +61,37 @@
       </div>
 
       <div class="panel-content-scroll">
+        <!-- Wellness Index Card -->
+        <div class="wellness-card organic-card">
+          <div class="wellness-gauge-container">
+            <svg class="wellness-ring" width="80" height="80">
+              <circle class="ring-bg" cx="40" cy="40" r="34" stroke-width="6" fill="transparent"/>
+              <circle id="wellness-progress-ring" class="ring-progress" cx="40" cy="40" r="34" stroke-width="6" fill="transparent" stroke-dasharray="213.63" stroke-dashoffset="213.63"/>
+            </svg>
+            <div class="wellness-score-text">
+              <span id="wellness-score-val">--</span>
+              <span class="label">Index</span>
+            </div>
+          </div>
+          <div class="wellness-info">
+            <h3>Patient Wellness Index</h3>
+            <p id="wellness-summary-desc">Analyzing 7-day health journal & prescription adherence...</p>
+          </div>
+        </div>
+
+        <!-- Proactive Clinical Insights Card -->
+        <div class="insights-alert-card organic-card hidden" id="insights-alert-card">
+          <div class="card-header">
+            <h3>💡 Proactive Clinical Insights</h3>
+            <span class="insights-badge">AI Trend Engine</span>
+          </div>
+          <div class="card-body">
+            <ul id="insights-list" class="insights-list">
+              <!-- Populated via JS -->
+            </ul>
+          </div>
+        </div>
+
         <!-- Patient Profile Settings Card -->
         <details class="profile-settings-card organic-card" id="profile-settings-accordion">
           <summary class="card-summary">

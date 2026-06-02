@@ -1739,6 +1739,132 @@ li.violation .checklist-desc strong {
   justify-content: flex-end;
 }
 
+/* ----------------------------------------------------
+   WELLNESS RADIAL PROGRESS GAUGE & INSIGHT CARD
+---------------------------------------------------- */
+
+.wellness-card {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-app) 100%);
+  border: 1px dashed var(--border-color);
+}
+
+.wellness-gauge-container {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.wellness-ring {
+  transform: rotate(-90deg);
+}
+
+.ring-bg {
+  stroke: var(--border-color);
+  opacity: 0.3;
+}
+
+.ring-progress {
+  stroke: var(--btn-primary-bg);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s ease-in-out;
+}
+
+.wellness-score-text {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+#wellness-score-val {
+  font-family: var(--font-serif);
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.wellness-score-text .label {
+  font-size: 0.55rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  margin-top: 1px;
+}
+
+.wellness-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wellness-info h3 {
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.wellness-info p {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+.insights-alert-card {
+  border-left: 4px solid var(--color-warning);
+  background-color: rgba(245, 158, 11, 0.02);
+}
+
+.insights-alert-card .card-header {
+  padding-bottom: 0;
+}
+
+.insights-badge {
+  font-size: 0.65rem;
+  padding: 0.15rem 0.4rem;
+  background-color: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.insights-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-left: 0;
+}
+
+.insights-list li {
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  padding: 6px var(--spacing-sm);
+  background-color: var(--accent-soft);
+  border-radius: 6px;
+  border-left: 3px solid var(--border-color);
+}
+
+.insights-list li:has(span.warning) {
+  border-left-color: var(--color-warning);
+}
+
+.hidden {
+  display: none !important;
+}
+
 /* Print CSS Media Queries */
 @media print {
   body * {
