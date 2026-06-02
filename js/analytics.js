@@ -5,9 +5,12 @@
 /**
  * Calculates a composite patient wellness score (0 to 100).
  * Weights:
- * - 40% Glucose logs within patient targets
- * - 30% Blood Pressure logs within systolic/diastolic targets
- * - 30% Medication adherence (fraction of taken prescriptions)
+ * - 30% Medication adherence rate (daily taken prescriptions)
+ * - 35% Glucose logs within patient targets
+ * - 25% Blood Pressure logs within systolic/diastolic targets
+ * - 10% Inverse symptom severity (fraction of symptom-free days)
+ * Formula:
+ * W = 30 * A_med + 35 * C_glucose + 25 * C_bp + 10 * S_symptom
  */
 export function computeWellnessScore(logs, medications, targets) {
   // Fallbacks if data is empty
@@ -18,7 +21,14 @@ export function computeWellnessScore(logs, medications, targets) {
   const bpSysMax = targets.bpSystolicTargetMax ?? 130;
   const bpDiaMax = targets.bpDiastolicTargetMax ?? 80;
 
-  // 1. Glucose compliance check (last 7 logs)
+  // 1. A_med: Medication adherence check (fraction of taken medications today)
+  let takenCount = 0;
+  medications.forEach(m => {
+    if (m.taken) takenCount++;
+  });
+  const medAdherence = medications.length > 0 ? (takenCount / medications.length) : 1.0;
+
+  // 2. C_glucose: Glucose compliance check (fraction of logs within target range)
   const glucoseLogs = logs.filter(l => l.glucose !== null);
   let glucoseInRangeCount = 0;
   glucoseLogs.forEach(l => {
@@ -26,9 +36,9 @@ export function computeWellnessScore(logs, medications, targets) {
       glucoseInRangeCount++;
     }
   });
-  const glucoseScore = glucoseLogs.length > 0 ? (glucoseInRangeCount / glucoseLogs.length) * 100 : 85;
+  const glucoseCompliance = glucoseLogs.length > 0 ? (glucoseInRangeCount / glucoseLogs.length) : 0.85;
 
-  // 2. BP compliance check (last 7 logs)
+  // 3. C_bp: BP compliance check (fraction of logs within systolic/diastolic targets)
   const bpLogs = logs.filter(l => l.bp !== null);
   let bpInRangeCount = 0;
   bpLogs.forEach(l => {
@@ -41,25 +51,25 @@ export function computeWellnessScore(logs, medications, targets) {
       }
     }
   });
-  const bpScore = bpLogs.length > 0 ? (bpInRangeCount / bpLogs.length) * 100 : 80;
+  const bpCompliance = bpLogs.length > 0 ? (bpInRangeCount / bpLogs.length) : 0.80;
 
-  // 3. Medication adherence check
-  let takenCount = 0;
-  medications.forEach(m => {
-    if (m.taken) takenCount++;
-  });
-  const medScore = medications.length > 0 ? (takenCount / medications.length) * 100 : 100;
-
-  // 4. Symptom penalty (subtract 5 points for each log containing symptoms other than "none/fine")
-  let symptomPenalty = 0;
+  // 4. S_symptom: Inverse symptom severity score (fraction of days with no active symptoms reported)
+  let symptomFreeCount = 0;
   logs.forEach(l => {
-    if (l.symptoms && l.symptoms.toLowerCase() !== "none" && l.symptoms.toLowerCase() !== "feeling fine" && l.symptoms.toLowerCase() !== "good energy" && l.symptoms.toLowerCase() !== "none reported" && l.symptoms.toLowerCase() !== "none reported.") {
-      symptomPenalty += 3;
+    const sym = l.symptoms ? l.symptoms.toLowerCase() : "";
+    const isSymptomFree = !sym || 
+                          sym.includes("none") || 
+                          sym.includes("fine") || 
+                          sym.includes("good") || 
+                          sym.includes("stable");
+    if (isSymptomFree) {
+      symptomFreeCount++;
     }
   });
+  const symptomScore = logs.length > 0 ? (symptomFreeCount / logs.length) : 0.90;
 
-  // Calculate weighted score
-  const rawScore = (glucoseScore * 0.4) + (bpScore * 0.3) + (medScore * 0.3) - symptomPenalty;
+  // Calculate weighted score (0 - 100 scale)
+  const rawScore = (30 * medAdherence) + (35 * glucoseCompliance) + (25 * bpCompliance) + (10 * symptomScore);
   return Math.max(0, Math.min(100, Math.round(rawScore)));
 }
 
@@ -139,10 +149,10 @@ export function analyzeTrends(logs, targets) {
   if (glucoseData.length >= 3) {
     const glucSlope = calculateSlope(glucoseData);
     result.glucoseSlope = parseFloat(glucSlope.toFixed(2));
-    if (glucSlope > 4) {
+    if (glucSlope > 5) {
       result.glucoseTrend = "rising";
       result.insights.push(`⚠️ Glucose shows a rising trend (+${result.glucoseSlope} mg/dL/day). Monitor carbohydrate intake and confirm morning medications.`);
-    } else if (glucSlope < -4) {
+    } else if (glucSlope < -5) {
       result.glucoseTrend = "falling";
       result.insights.push(`📉 Glucose shows a downward trend (${result.glucoseSlope} mg/dL/day). Verify you are eating adequate meals to prevent hypoglycemia.`);
     } else {
