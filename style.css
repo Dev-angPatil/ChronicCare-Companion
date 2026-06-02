@@ -219,7 +219,6 @@ body {
   gap: var(--spacing-sm);
   background-color: rgba(255, 255, 255, 0.08);
   padding: 0.4rem 0.8rem;
-  border-radius: var(--radius-round) || 30px;
   border-radius: 20px;
   font-size: 0.85rem;
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -325,7 +324,7 @@ body {
 .dashboard-grid {
   flex: 1;
   display: grid;
-  grid-template-columns: 350px 1fr 380px; /* Sidebar, chat viewport, and collapsable prompt lab */
+  grid-template-columns: 350px 1fr 380px;
   overflow: hidden;
   height: calc(100vh - 60px);
   transition: grid-template-columns 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -455,6 +454,22 @@ details.profile-settings-card summary::-webkit-details-marker {
 }
 details[open] .summary-toggle-icon {
   transform: rotate(180deg);
+}
+
+.form-section-title {
+  font-family: var(--font-serif);
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--btn-primary-bg);
+  border-bottom: 1.5px solid var(--border-color);
+  padding-bottom: 2px;
+  margin-top: 1.2rem;
+  margin-bottom: 0.6rem;
+  letter-spacing: 0.02em;
+}
+
+.form-section-title:first-child {
+  margin-top: 0;
 }
 
 /* ----------------------------------------------------
@@ -736,7 +751,7 @@ select:focus {
 }
 
 .chart-line-bp {
-  stroke: #c27f38; /* Amber brown */
+  stroke: #c27f38;
 }
 
 .chart-dot {
@@ -1018,7 +1033,7 @@ select:focus {
   align-self: flex-start;
 }
 
-/* Dynamic System warning card inside chat (e.g. Hypoglycemia recommendation) */
+/* Dynamic System warning card inside chat */
 .system-warning-card {
   align-self: stretch;
   background-color: var(--color-urgent-bg);
@@ -1142,6 +1157,44 @@ select:focus {
   font-size: 1.1rem;
 }
 
+/* Microphone Speech button */
+.btn-voice-mic {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-round);
+  background-color: var(--accent-soft);
+  color: var(--text-secondary);
+  border: 1.5px solid var(--border-color);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: var(--transition-smooth);
+}
+
+.btn-voice-mic:hover {
+  border-color: var(--border-focus);
+  color: var(--text-primary);
+  transform: scale(1.05);
+}
+
+.btn-voice-mic.recording {
+  background-color: rgba(204, 112, 92, 0.15);
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+  animation: micPulseGlow 1.5s infinite;
+}
+
+@keyframes micPulseGlow {
+  0% { box-shadow: 0 0 0 0 rgba(204, 112, 92, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(204, 112, 92, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(204, 112, 92, 0); }
+}
+
+.mic-icon {
+  font-size: 1.1rem;
+}
+
 /* ----------------------------------------------------
    PROMPT ENGINEERING LABORATORY
 ---------------------------------------------------- */
@@ -1169,6 +1222,14 @@ select:focus {
   justify-content: flex-end;
   gap: var(--spacing-sm);
   margin-top: var(--spacing-sm);
+}
+
+.api-encryption-status {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: var(--spacing-sm);
+  font-weight: 500;
+  text-align: right;
 }
 
 /* Prompt display screen styling */
@@ -1279,6 +1340,155 @@ li.violation .checklist-desc strong {
 }
 
 /* ----------------------------------------------------
+   BLUETOOTH PAIRING DIALOG
+---------------------------------------------------- */
+
+.ble-sync-dialog {
+  border: none;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+  max-width: 500px;
+  width: 90%;
+  margin: auto;
+  overflow: hidden;
+  background-color: var(--bg-card);
+  outline: none;
+}
+
+.ble-sync-dialog::backdrop {
+  background-color: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(5px);
+}
+
+.ble-dialog-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.ble-dialog-header {
+  background-color: var(--bg-header);
+  color: var(--text-on-header);
+  padding: var(--spacing-md) var(--spacing-lg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ble-dialog-header h2 {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.ble-dialog-icon {
+  font-size: 1.4rem;
+  margin-right: var(--spacing-sm);
+}
+
+.btn-close-dialog {
+  background: none;
+  border: none;
+  color: var(--text-on-header);
+  font-size: 1.6rem;
+  cursor: pointer;
+  line-height: 1;
+  opacity: 0.75;
+  transition: var(--transition-fast);
+}
+
+.btn-close-dialog:hover {
+  opacity: 1;
+}
+
+.ble-dialog-body {
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.ble-instructions {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.ble-devices-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-md);
+}
+
+.ble-pair-card {
+  background-color: var(--accent-soft);
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-lg) var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
+  cursor: pointer;
+  outline: none;
+  transition: var(--transition-smooth);
+}
+
+.ble-pair-card:hover {
+  border-color: var(--border-focus);
+  background-color: var(--bg-card);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 15px rgba(0,0,0,0.05);
+}
+
+.ble-pair-card .device-icon {
+  font-size: 2rem;
+}
+
+.ble-pair-card h3 {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.ble-pair-card .device-name {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* BLE simulated console screen */
+.ble-console {
+  background-color: #0f172a;
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-md);
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: #38bdf8;
+  height: 120px;
+  overflow-y: auto;
+  border: 1px solid #1e293b;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ble-log-entry {
+  line-height: 1.4;
+  animation: consoleFade 0.2s ease-in forwards;
+}
+
+@keyframes consoleFade {
+  from { opacity: 0; transform: translateX(-4px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.console-placeholder {
+  color: #64748b;
+  text-align: center;
+  margin: auto;
+}
+
+/* ----------------------------------------------------
    EMERGENCY DIALOG OVERLAY
 ---------------------------------------------------- */
 
@@ -1371,7 +1581,7 @@ li.violation .checklist-desc strong {
   max-width: 800px;
   width: 95%;
   margin: auto;
-  background-color: #ffffff; /* Always light clinical white for reports */
+  background-color: #ffffff;
   color: #334155;
   outline: none;
 }
@@ -1557,14 +1767,13 @@ li.violation .checklist-desc strong {
 
 @media (max-width: 1200px) {
   .dashboard-grid {
-    grid-template-columns: 300px 1fr 0px; /* Hide prompt lab by default */
+    grid-template-columns: 300px 1fr 0px;
   }
   .dashboard-grid:has(.engineering-panel.collapsed) {
     grid-template-columns: 300px 1fr 0px;
   }
-  /* Show toggled state if expanded over chat viewport on mobile/tablet */
   .dashboard-grid:has(.engineering-panel:not(.collapsed)) {
-    grid-template-columns: 300px 0px 1fr; /* Full lab cover */
+    grid-template-columns: 300px 0px 1fr;
   }
 }
 
@@ -1594,6 +1803,6 @@ li.violation .checklist-desc strong {
     gap: var(--spacing-sm);
   }
   .btn-text {
-    display: none; /* Icon only on header toggle buttons */
+    display: none;
   }
 }

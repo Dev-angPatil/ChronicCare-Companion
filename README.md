@@ -1,66 +1,69 @@
-# 🌿 ChronicCare Companion & Prompt Lab
+# 🌿 ChronicCare Platform & Engineering Lab
 
-A premium, portfolio-grade healthcare dashboard and AI prompt engineering diagnostic workspace. It features a custom, reassuring **Serene Bio-Organic theme** designed to feel therapeutic rather than flat and clinical, built entirely with modern semantic HTML5, custom vanilla CSS (with CSS variables and themes), and vanilla JS.
+An enterprise-grade patient care dashboard and AI prompt engineering diagnostics sandbox. Built entirely using a custom, therapeutic **Serene Bio-Organic theme** with Outfit/Fraunces typography and frosted glass animations. The application is completely serverless and runs client-side inside any modern browser, leveraging native web APIs.
 
-This is a **complete product** that integrates a patient-facing clinical logs tracker, interactive inline SVG charts, a digital pillbox, a compliance calendar, and a safety-critical chatbot with an engineering laboratory that compiles system instructions, analyzes classification rules, and logs safety violations in real time.
-
----
-
-## 🚀 Key Features
-
-### 1. Patient Health Hub
-* **👤 Context Profile Panel**: Edit the patient's name, chronic conditions, active medications, and target guidelines. Changes instantly propagate to the compiled prompt.
-* **💊 Digital Pillbox**: Track medication compliance. Click "Log" to take a pill, which updates next-dose count-down timers and syncs with the compliance logs.
-* **📝 Daily Journal Logger**: Add daily blood glucose (mg/dL) and blood pressure readings.
-* **📈 SVG Trend Analytics**: Interactive line charts for glucose and blood pressure over a 7-day period. Renders gridlines, target shaded bands, and points with rich hover titles.
-* **🗓️ Compliance Calendar**: Track daily logging compliance. Colors indicate full log (meds + readings), partial log, or missed logging events.
-
-### 2. Conversational Chat Companion
-* **💬 Adaptive Chat Viewport**: Scrollable chat history with clear role avatars and response intent category badges.
-* **🚀 Suggestion Chips**: Custom, dynamically populated seed prompts that match the active patient's conditions.
-* **⏰ Daily Check-in Auto-message**: Simulates receiving the clinical check-in notification summarizing the patient's previous day.
-* **🔒 API Gateway**: Insert your Google AI Studio Gemini API key to switch from simulated mock rules to live conversation with `gemini-1.5-flash` natively in the client.
-
-### 3. Prompt Engineering Laboratory (Side Drawer)
-* **🔍 System Prompt Compiler**: Visualizes the active raw system instruction template with real-time profile variable injections highlighted.
-* **🔬 Classification diagnostics**: Displays detected intent (`[INFO]`, `[READING]`, `[SYMPTOM]`, `[URGENT]`), trigger keywords, and word count constraint metrics.
-* **🛡️ Safety Guardrail Checklist**: Runs static checks on the chatbot's output to verify that it does not diagnose new conditions or adjust dosage schedules.
-
-### 4. Safety Action Center
-* **🚨 Emergency Keyword Override**: Typing escalation keywords (e.g. `chest pain`, `glucose below 54`) instantly locks the UI with a blurred overlay, showing critical clinical safety instructions.
-* **🩺 Physician consultation Exporter**: Formats all log entries, active demographics, and recent chat logs into a printable clean layout.
+This version transitions the codebase into a modular, production-ready **ES Module architecture** with robust local database stores, hardware integrations, cryptographic security, and clinical logging.
 
 ---
 
-## 🛠️ Tech Stack & Setup
+## 🏗️ Technical Architecture & Modules
 
-* **Core**: Pure HTML5 (semantic elements like `<dialog>` and `<details>`) & Vanilla ES6+ JavaScript.
-* **Styling**: Vanilla CSS with custom properties (CSS variables) for light, dark, and organic themes.
-* **Fonts**: Fraunces (classic medical serif brand) & Outfit (sans-serif UI).
-* **Dependencies**: None (fully self-contained, no frameworks required).
+The application is structured into modular Javascript files loaded as ES6 modules in the browser:
 
-### Running Locally
-To launch the application:
-1. Open the `/home/deu/Coding Repos/Healthcare/index.html` file directly in any modern web browser.
-2. Alternatively, run a simple local development server:
-   ```bash
-   # Using Python
-   python3 -m http.server 8000
-   
-   # Or using Node/npx
-   npx serve .
-   ```
+* **[index.html](file:///home/deu/Coding%20Repos/Healthcare/index.html)** — Semantic HTML5 viewport skeleton implementing native `<dialog>` modals, `<details>` accordions, microphone inputs, and Bluetooth controllers.
+* **[style.css](file:///home/deu/Coding%20Repos/Healthcare/style.css)** — Custom stylesheet detailing light/dark/organic variables, glowing microphone pulse animations, BLE terminal displays, and dynamic responsive adjustments.
+* **[js/main.js](file:///home/deu/Coding%20Repos/Healthcare/js/main.js)** — Core bootstrapper and UI event listener coordinator, routing actions between state and presentation layers.
+* **[js/state.js](file:///home/deu/Coding%20Repos/Healthcare/js/state.js)** — Local database controller managing **IndexedDB** (`ChronicCareDB` version 1) to persist patient profiles, digital pill schedules, logging journals, and chat timeline transcripts.
+* **[js/crypto.js](file:///home/deu/Coding%20Repos/Healthcare/js/crypto.js)** — Client-side cryptographic client implementing **AES-GCM** key derivation (via PBKDF2) to encrypt/decrypt Google Gemini API keys.
+* **[js/classifier.js](file:///home/deu/Coding%20Repos/Healthcare/js/classifier.js)** — Intent parser classifying entries (`[URGENT]`, `[READING]`, `[SYMPTOM]`, `[INFO]`) and running regex routines to automatically extract logged metrics from conversational text.
+* **[js/chart.js](file:///home/deu/Coding%20Repos/Healthcare/js/chart.js)** — SVG canvas drawing coordinates for glucose and blood pressure trends, shading clinical target zones in real time.
+* **[js/speech.js](file:///home/deu/Coding%20Repos/Healthcare/js/speech.js)** — Audio capture client leveraging the **Web Speech API** (`webkitSpeechRecognition`) for voice dictation.
+* **[js/bluetooth.js](file:///home/deu/Coding%20Repos/Healthcare/js/bluetooth.js)** — Pairing and data ingestion client simulating wireless Bluetooth blood sugar meters and pressure cuffs.
 
 ---
 
-## 🧪 Quick Showcase Guide
+## 🚀 Key Feature Demos
 
-Here is a workflow to demonstrate the product's features:
+### 1. Advanced Clinical Profile
+Click the **Detailed Clinical Profile** card in the left panel to expand:
+* **Diabetes Targets**: Customize Fasting Range limits (e.g. 80-130 mg/dL), Postprandial Max limits, and Hypoglycemia warning thresholds. The SVG trend chart immediately updates its shaded target zones based on these settings.
+* **Hypertension Stages**: Set targets and select classification stages (e.g. Stage 1 vs Stage 2 Hypertension).
+* **Physician Directories**: Update your primary doctor's name, telephone number, and clinic. All data is dynamically compiled into the companion's active system prompt instruction.
 
-1. **Test the Organic Theme**: Click the **☀️ Light** or **🌒 Dark** buttons in the header to swap CSS stylesheets, then switch back to **🌿 Sage** to view the custom bio-organic theme.
-2. **Log Today's Readings**: In the logger card, type `178` for Glucose and `138/88` for BP, then click **Record to Journal**. Note the SVG chart and calendar cell update instantly.
-3. **Use the Digital Pillbox**: Click **Log** on the *Amlodipine* pill card. Today's cell on the compliance calendar will turn fully green (Full Log).
-4. **Trigger URGENT overlay**: In the chat input, type `I am having sudden chest pain` and hit enter. The chat will lock and display emergency guidelines. Click **I have called for help** to dismiss it.
-5. **Inspect Prompt Compilations**: Expand the **Prompt Lab** drawer. Update the patient name in the profile card from `Alex` to `Sarah`. Observe the system prompt display instantly highlighting `Sarah` inside the template.
-6. **Live Gemini Test**: Add a Gemini API key. Ask `Can Metformin cause stomach aches?` to observe real-time, target-guided responses.
-7. **Export Clinical Report**: Click **Generate Consultation Report** at the bottom of the lab panel, then print/save it.
+### 2. NLP Log Autocreator
+Open the Chat Companion and type:
+> *"My blood sugar was 110 after lunch and my pressure is 125/82"*
+
+Confirm that:
+* The parser extracts `Glucose: 110 mg/dL` and `BP: 125/82 mmHg` automatically.
+* The readings are instantly logged to IndexedDB, updating the 7-day SVG chart and calendar activity dots.
+* The system logs a `[NLP LOG EXTRACTED]` system event notification inside the chat history.
+
+### 3. Voice Speech Dictation
+* Click the microphone button (`🎙️`) next to the chat bar.
+* Speak your symptoms or readings.
+* The final transcript is inserted directly into your chat input text box.
+
+### 4. Bluetooth GATT Sync Simulation
+* Click **🔌 BLE Sync** on the Log Readings card header.
+* Click **Pair Glucometer** or **Pair BP Monitor**.
+* The terminal logs device handshakes, connects services, reads simulated GATT characteristics, syncs the metric directly into your IndexedDB journal, and closes automatically.
+
+### 5. Encrypted API Key Storage
+* Paste your Gemini API key in the **Prompt Lab** sidebar.
+* Enter a local passphrase and click **Encrypt & Save**. The key is saved as a secure AES-GCM ciphertext colon-separated hex format.
+* To chat, type your passphrase and click **Decrypt & Load** to unlock live responses.
+
+---
+
+## 🛠️ Launching the Platform
+
+To open the application locally:
+```bash
+# Start a local HTTP server
+python3 -m http.server 8000
+
+# Or serve via Node
+npx serve .
+```
+Visit `http://localhost:8000` inside Google Chrome, Safari, or Microsoft Edge.

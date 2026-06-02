@@ -62,30 +62,91 @@
 
       <div class="panel-content-scroll">
         <!-- Patient Profile Settings Card -->
-        <details class="profile-settings-card organic-card" open>
+        <details class="profile-settings-card organic-card" id="profile-settings-accordion">
           <summary class="card-summary">
-            <h3>👤 Patient Demographics & Profile</h3>
+            <h3>👤 Detailed Clinical Profile</h3>
             <span class="summary-toggle-icon">▼</span>
           </summary>
           <div class="card-body">
             <form id="profile-form">
+              <!-- Demographics -->
+              <div class="form-section-title">Demographics</div>
               <div class="form-group">
                 <label for="profile-name">Patient Name</label>
                 <input type="text" id="profile-name" value="Alex" required>
               </div>
               <div class="form-group">
                 <label for="profile-conditions">Chronic Conditions</label>
-                <input type="text" id="profile-conditions" value="Type 2 diabetes, hypertension" placeholder="e.g. Type 2 diabetes" required>
+                <input type="text" id="profile-conditions" value="Type 2 diabetes, hypertension" required>
               </div>
               <div class="form-group">
-                <label for="profile-medications">Active Medications</label>
-                <textarea id="profile-medications" rows="2" placeholder="e.g. Metformin 500mg twice daily" required>Metformin 500mg twice daily, Amlodipine 5mg</textarea>
+                <label for="profile-medications">Active Prescriptions</label>
+                <textarea id="profile-medications" rows="2" required>Metformin 500mg twice daily, Amlodipine 5mg</textarea>
+              </div>
+
+              <!-- Diabetes Parameters -->
+              <div class="form-section-title">Diabetes Target Thresholds</div>
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label for="p-gluc-fast-min">Fasting Min (mg/dL)</label>
+                  <input type="number" id="p-gluc-fast-min" value="80" required>
+                </div>
+                <div class="form-group">
+                  <label for="p-gluc-fast-max">Fasting Max (mg/dL)</label>
+                  <input type="number" id="p-gluc-fast-max" value="130" required>
+                </div>
+              </div>
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label for="p-gluc-post-max">Postprandial Max</label>
+                  <input type="number" id="p-gluc-post-max" value="180" required>
+                </div>
+                <div class="form-group">
+                  <label for="p-gluc-hypo">Hypo warning</label>
+                  <input type="number" id="p-gluc-hypo" value="70" required>
+                </div>
+              </div>
+
+              <!-- Hypertension Parameters -->
+              <div class="form-section-title">Hypertension Thresholds</div>
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label for="p-bp-sys-max">Systolic Target</label>
+                  <input type="number" id="p-bp-sys-max" value="130" required>
+                </div>
+                <div class="form-group">
+                  <label for="p-bp-dia-max">Diastolic Target</label>
+                  <input type="number" id="p-bp-dia-max" value="80" required>
+                </div>
               </div>
               <div class="form-group">
-                <label for="profile-targets">Target Ranges</label>
-                <textarea id="profile-targets" rows="2" placeholder="e.g. Fasting glucose: 80-130 mg/dL" required>Fasting glucose: 80–130 mg/dL, BP: <130/80</textarea>
+                <label for="p-bp-stage">Clinical Classification</label>
+                <select id="p-bp-stage">
+                  <option value="Normal">Normal (&lt;120/80)</option>
+                  <option value="Elevated">Elevated (120-129/&lt;80)</option>
+                  <option value="Stage 1 Hypertension" selected>Stage 1 Hypertension (130-139/80-89)</option>
+                  <option value="Stage 2 Hypertension">Stage 2 Hypertension (&ge;140/90)</option>
+                </select>
               </div>
-              <button type="submit" class="btn btn-primary">Update Profile Context</button>
+
+              <!-- Primary Care Team -->
+              <div class="form-section-title">Care Team Directory</div>
+              <div class="form-group">
+                <label for="p-physician-name">Primary Physician</label>
+                <input type="text" id="p-physician-name" value="Dr. Evelyn Ramirez" required>
+              </div>
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label for="p-physician-phone">Office Phone</label>
+                  <input type="text" id="p-physician-phone" value="555-0147" required>
+                </div>
+                <div class="form-group">
+                  <label for="p-physician-clinic">Clinic Office</label>
+                  <input type="text" id="p-physician-clinic" value="Oakridge Clinic" required>
+                </div>
+              </div>
+
+              <button type="submit" class="btn btn-primary w-full">Update Clinical Profile</button>
             </form>
           </div>
         </details>
@@ -107,6 +168,9 @@
         <div class="logger-card organic-card">
           <div class="card-header">
             <h3>📝 Log Daily Readings</h3>
+            <div class="ble-sync-actions">
+              <button class="btn btn-small btn-secondary" id="btn-open-ble" type="button" title="Sync via Bluetooth Glucometer or BP Cuff">🔌 BLE Sync</button>
+            </div>
           </div>
           <div class="card-body">
             <form id="log-readings-form">
@@ -134,7 +198,7 @@
                   </select>
                 </div>
               </div>
-              <button type="submit" class="btn btn-secondary">Record to Journal</button>
+              <button type="submit" class="btn btn-secondary w-full">Record to Journal</button>
             </form>
           </div>
         </div>
@@ -150,9 +214,9 @@
           </div>
           <div class="card-body">
             <div class="svg-chart-container">
-              <!-- SVG chart will render dynamically inside here -->
+              <!-- SVG chart renders dynamically inside here -->
               <svg id="trend-svg" class="trend-svg" viewBox="0 0 500 200">
-                <!-- Background grid, targets, and trend lines populated in app.js -->
+                <!-- Grid, paths and nodes loaded in app.js -->
               </svg>
             </div>
             <div class="chart-legend" id="chart-legend">
@@ -219,6 +283,9 @@
       <!-- Chat Form Controls -->
       <div class="chat-input-bar">
         <form id="chat-input-form" class="chat-form">
+          <button class="btn-voice-mic" id="btn-voice-dictation" type="button" title="Start voice dictation (speech-to-text)" aria-label="Start voice dictation">
+            <span class="mic-icon">🎙️</span>
+          </button>
           <textarea id="chat-textarea" placeholder="Type your symptom, reading, or general question here... (e.g. 'My glucose was 165' or 'I forgot my Metformin')" rows="1" required></textarea>
           <button type="submit" class="btn btn-send" id="btn-send-message" aria-label="Send Message">
             <span class="send-icon">🚀</span>
@@ -238,17 +305,31 @@
         <!-- Gemini API Gateway Card -->
         <div class="lab-card organic-card">
           <div class="card-header">
-            <h3>🔑 Gemini API Gateway</h3>
+            <h3>🔑 Encrypted Gemini API Gateway</h3>
           </div>
           <div class="card-body">
-            <p class="card-instruction">Add your Google AI Studio API Key to test the companion with real-time, production LLM execution. Stored securely inside your browser's localStorage.</p>
-            <div class="form-group api-key-input-container">
-              <input type="password" id="gemini-api-key" placeholder="AIzaSy..." autocomplete="off">
-              <button class="btn btn-small" id="btn-toggle-key-visibility" type="button">👁️</button>
+            <p class="card-instruction">To prevent plain-text leakages, enter a local passphrase to encrypt and decrypt your API Key. Stored securely in ciphertext format in your browser's localStorage.</p>
+            
+            <div class="form-group">
+              <label for="gemini-api-key">Google AI Studio API Key</label>
+              <div class="api-key-input-container">
+                <input type="password" id="gemini-api-key" placeholder="AIzaSy..." autocomplete="off">
+                <button class="btn btn-small" id="btn-toggle-key-visibility" type="button">👁️</button>
+              </div>
             </div>
+
+            <div class="form-group">
+              <label for="crypto-passphrase">Local Passphrase</label>
+              <input type="password" id="crypto-passphrase" placeholder="Password to encrypt/decrypt key">
+            </div>
+
             <div class="api-key-actions">
-              <button class="btn btn-small btn-primary" id="btn-save-api-key">Connect Key</button>
+              <button class="btn btn-small btn-primary" id="btn-save-api-key">Encrypt & Save</button>
+              <button class="btn btn-small btn-secondary" id="btn-load-api-key">Decrypt & Load</button>
               <button class="btn btn-small btn-danger" id="btn-clear-api-key">Remove Key</button>
+            </div>
+            <div class="api-encryption-status" id="api-encryption-status">
+              Status: No Key Connected
             </div>
           </div>
         </div>
@@ -262,7 +343,7 @@
           <div class="card-body prompt-editor-body">
             <div class="code-wrapper">
               <pre><code id="live-system-prompt" class="system-prompt-display">
-<!-- Live prompt will be injected with highlight spans via JS -->
+<!-- Live prompt injected with highlight spans via JS -->
               </code></pre>
             </div>
           </div>
@@ -336,7 +417,7 @@
             <h3>🩺 Physician Consultation Exporter</h3>
           </div>
           <div class="card-body">
-            <p class="card-instruction">Compile all journal logs, chat responses, and medication compliance events into an organized medical record to share directly with your primary care provider.</p>
+            <p class="card-instruction">Compile all IndexedDB journal logs, active clinical targets, medication adherence charts, and recent chat logs into a secure physician report.</p>
             <button class="btn btn-secondary w-full" id="btn-export-physician">Generate Consultation Report</button>
           </div>
         </div>
@@ -344,6 +425,38 @@
     </section>
 
   </main>
+
+  <!-- Bluetooth BLE Pairing Modal Dialog -->
+  <dialog id="ble-sync-dialog" class="ble-sync-dialog" closedby="any">
+    <div class="ble-dialog-content">
+      <div class="ble-dialog-header">
+        <span class="ble-dialog-icon">🔌</span>
+        <h2>IoT BLE Device Sync</h2>
+        <button class="btn-close-dialog" id="btn-close-ble-dialog">×</button>
+      </div>
+      <div class="ble-dialog-body">
+        <p class="ble-instructions">Choose a Bluetooth device to pair and retrieve the latest clinical reading logs.</p>
+        
+        <div class="ble-devices-grid">
+          <button class="ble-pair-card" id="btn-sync-glucometer" data-device="glucometer">
+            <span class="device-icon">🩸</span>
+            <h3>Pair Glucometer</h3>
+            <span class="device-name">GlucoLink-BLE</span>
+          </button>
+          <button class="ble-pair-card" id="btn-sync-bp" data-device="bp-monitor">
+            <span class="device-icon">🩺</span>
+            <h3>Pair BP Monitor</h3>
+            <span class="device-name">PressureGuard-BLE</span>
+          </button>
+        </div>
+
+        <!-- BLE Console logs screen -->
+        <div class="ble-console" id="ble-console">
+          <div class="console-placeholder">Awaiting device pairing...</div>
+        </div>
+      </div>
+    </div>
+  </dialog>
 
   <!-- Emergency Overlay Dialog Modal (for URGENT scenarios) -->
   <dialog id="emergency-dialog" class="emergency-dialog" closedby="any">
@@ -356,7 +469,7 @@
         <p class="emergency-intro">Based on your message, you may be experiencing symptoms that require immediate medical attention.</p>
         
         <div class="emergency-instructions-box" id="emergency-instructions-text">
-          <!-- Text dynamically loaded based on trigger -->
+          <!-- Dynamically populated based on trigger -->
           • Call 911 or visit the nearest emergency room immediately.<br>
           • Do not attempt to take extra doses of medication without direct medical guidance.<br>
           • Keep active, do not lie down if feeling chest pain or shortness of breath.
@@ -389,7 +502,7 @@
     </div>
   </dialog>
 
-  <!-- Load JavaScript Logic -->
-  <script src="app.js"></script>
+  <!-- Load JavaScript ES Module Core Bootstrapper -->
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>
