@@ -13,35 +13,98 @@ export function computeWellnessScore(logs, medications, targets) {
   const bpSysMax = targets.bpSystolicTargetMax ?? 130;
   const bpDiaMax = targets.bpDiastolicTargetMax ?? 80;
 
+  let totalWeight = 0;
+  let weightedSum = 0;
+
   // 1. Medication adherence
-  let takenCount = 0;
-  medications.forEach(m => {
-    // DB field: taken (0 or 1)
-    if (m.taken === 1 || m.taken === true) takenCount++;
-  });
-  const medAdherence = medications.length > 0 ? (takenCount / medications.length) : 1.0;
+  if (medications && medications.length > 0) {
+    let takenCount = 0;
+    medications.forEach(m => {
+      if (m.taken === 1 || m.taken === true) takenCount++;
+    });
+    const medAdherence = takenCount / medications.length;
+    weightedSum += medAdherence * 30;
+    totalWeight += 30;
+  }
 
   // 2. Glucose compliance
   const glucoseLogs = logs.filter(l => l.glucose !== null && l.glucose !== undefined);
-  let glucoseInRangeCount = 0;
-  glucoseLogs.forEach(l => {
-    if (l.glucose >= gMin && l.glucose <= gMax) {
-      glucoseInRangeCount++;
-    }
-  });
-  const glucoseCompliance = glucoseLogs.length > 0 ? (glucoseInRangeCount / glucoseLogs.length) : 0.85;
+  if (glucoseLogs.length > 0) {
+    let glucoseInRangeCount = 0;
+    glucoseLogs.forEach(l => {
+      if (l.glucose >= gMin && l.glucose <= gMax) glucoseInRangeCount++;
+    });
+    weightedSum += (glucoseInRangeCount / glucoseLogs.length) * 35;
+    totalWeight += 35;
+  }
 
   // 3. BP compliance
-  const bpLogs = logs.filter(l => l.bp_systolic !== null && l.bp_diastolic !== null);
-  let bpInRangeCount = 0;
-  bpLogs.forEach(l => {
-    if (l.bp_systolic <= bpSysMax && l.bp_diastolic <= bpDiaMax) {
-      bpInRangeCount++;
-    }
-  });
-  const bpCompliance = bpLogs.length > 0 ? (bpInRangeCount / bpLogs.length) : 0.80;
+  const bpLogs = logs.filter(l => l.bp_systolic !== null && l.bp_diastolic !== null && l.bp_systolic !== undefined && l.bp_diastolic !== undefined);
+  if (bpLogs.length > 0) {
+    let bpInRangeCount = 0;
+    bpLogs.forEach(l => {
+      if (l.bp_systolic <= bpSysMax && l.bp_diastolic <= bpDiaMax) bpInRangeCount++;
+    });
+    weightedSum += (bpInRangeCount / bpLogs.length) * 25;
+    totalWeight += 25;
+  }
 
-  // 4. Inverse symptom severity
+  // 4. Anxiety (GAD-7) compliance: score < 10 (minimal/mild symptoms)
+  const anxietyLogs = logs.filter(l => l.anxiety_level !== null && l.anxiety_level !== undefined);
+  if (anxietyLogs.length > 0) {
+    let anxietyComplianceCount = 0;
+    anxietyLogs.forEach(l => {
+      if (l.anxiety_level < 10) anxietyComplianceCount++;
+    });
+    weightedSum += (anxietyComplianceCount / anxietyLogs.length) * 25;
+    totalWeight += 25;
+  }
+
+  // 5. Heart rate compliance: 60 to 100 bpm
+  const hrLogs = logs.filter(l => l.heart_rate !== null && l.heart_rate !== undefined);
+  if (hrLogs.length > 0) {
+    let hrComplianceCount = 0;
+    hrLogs.forEach(l => {
+      if (l.heart_rate >= 60 && l.heart_rate <= 100) hrComplianceCount++;
+    });
+    weightedSum += (hrComplianceCount / hrLogs.length) * 15;
+    totalWeight += 15;
+  }
+
+  // 6. Peak flow compliance: >= 350 L/min
+  const peakFlowLogs = logs.filter(l => l.peak_flow !== null && l.peak_flow !== undefined);
+  if (peakFlowLogs.length > 0) {
+    let peakFlowComplianceCount = 0;
+    peakFlowLogs.forEach(l => {
+      if (l.peak_flow >= 350) peakFlowComplianceCount++;
+    });
+    weightedSum += (peakFlowComplianceCount / peakFlowLogs.length) * 25;
+    totalWeight += 25;
+  }
+
+  // 7. Inhaler puffs compliance: <= 2 puffs/day
+  const inhalerLogs = logs.filter(l => l.inhaler_puffs !== null && l.inhaler_puffs !== undefined);
+  if (inhalerLogs.length > 0) {
+    let inhalerComplianceCount = 0;
+    inhalerLogs.forEach(l => {
+      if (l.inhaler_puffs <= 2) inhalerComplianceCount++;
+    });
+    weightedSum += (inhalerComplianceCount / inhalerLogs.length) * 15;
+    totalWeight += 15;
+  }
+
+  // 8. Pain level compliance: pain level < 5
+  const painLogs = logs.filter(l => l.pain_level !== null && l.pain_level !== undefined);
+  if (painLogs.length > 0) {
+    let painComplianceCount = 0;
+    painLogs.forEach(l => {
+      if (l.pain_level < 5) painComplianceCount++;
+    });
+    weightedSum += (painComplianceCount / painLogs.length) * 25;
+    totalWeight += 25;
+  }
+
+  // 9. Symptoms compliance
   let symptomFreeCount = 0;
   logs.forEach(l => {
     const sym = l.symptoms ? l.symptoms.toLowerCase() : "";
@@ -54,10 +117,11 @@ export function computeWellnessScore(logs, medications, targets) {
       symptomFreeCount++;
     }
   });
-  const symptomScore = logs.length > 0 ? (symptomFreeCount / logs.length) : 0.90;
+  weightedSum += (symptomFreeCount / logs.length) * 10;
+  totalWeight += 10;
 
-  const rawScore = (30 * medAdherence) + (35 * glucoseCompliance) + (25 * bpCompliance) + (10 * symptomScore);
-  return Math.max(0, Math.min(100, Math.round(rawScore)));
+  if (totalWeight === 0) return 75;
+  return Math.max(0, Math.min(100, Math.round((weightedSum / totalWeight) * 100)));
 }
 
 /**
@@ -196,6 +260,34 @@ export function analyzeTrends(logs, targets) {
     }
   }
 
+  // 2.5 Anxiety, Heart Rate, Peak Flow, and Pain Slopes
+  const anxietyLogs = logs.filter(l => l.anxiety_level !== null && l.anxiety_level !== undefined);
+  const anxietyPoints = anxietyLogs.map((l, idx) => ({ x: idx, y: l.anxiety_level }));
+  if (anxietyPoints.length >= 3) {
+    const anxSlope = calculateSlope(anxietyPoints);
+    if (anxSlope > 0.5) {
+      result.alerts.push(`⚠️ Anxiety levels (GAD-7) show a rising trend (+${anxSlope.toFixed(2)}/day). Consider breathing exercises or contacting support.`);
+    }
+  }
+
+  const peakFlowLogs = logs.filter(l => l.peak_flow !== null && l.peak_flow !== undefined);
+  const peakFlowPoints = peakFlowLogs.map((l, idx) => ({ x: idx, y: l.peak_flow }));
+  if (peakFlowPoints.length >= 3) {
+    const pfSlope = calculateSlope(peakFlowPoints);
+    if (pfSlope < -10) {
+      result.alerts.push(`🚨 CRITICAL ASTHMA FORECAST: Peak expiratory flow shows a steep decline (${pfSlope.toFixed(2)} L/min/day). High risk of asthma flare-up.`);
+    }
+  }
+
+  const painLogs = logs.filter(l => l.pain_level !== null && l.pain_level !== undefined);
+  const painPoints = painLogs.map((l, idx) => ({ x: idx, y: l.pain_level }));
+  if (painPoints.length >= 3) {
+    const painSlope = calculateSlope(painPoints);
+    if (painSlope > 0.5) {
+      result.alerts.push(`⚠️ Pain levels show a rising trajectory (+${painSlope.toFixed(2)}/day). Limit strenuous tasks and consult pain care protocols.`);
+    }
+  }
+
   // 3. Static Threshold Alerts
   const lastLog = logs[logs.length - 1];
   if (lastLog) {
@@ -209,6 +301,37 @@ export function analyzeTrends(logs, targets) {
     if (lastLog.bp_systolic !== null && lastLog.bp_diastolic !== null) {
       if (lastLog.bp_systolic >= 140 || lastLog.bp_diastolic >= 90) {
         result.alerts.push(`🚨 HYPERTENSIVE ALERT: Last blood pressure was ${lastLog.bp_systolic}/${lastLog.bp_diastolic} mmHg. Rest for 5 minutes and repeat.`);
+      }
+    }
+    if (lastLog.anxiety_level !== null && lastLog.anxiety_level !== undefined) {
+      if (lastLog.anxiety_level >= 15) {
+        result.alerts.push(`🚨 SEVERE ANXIETY ALERT: Your last logged anxiety score was ${lastLog.anxiety_level}/21 (Severe). Practice slow breathing and contact your healthcare companion.`);
+      } else if (lastLog.anxiety_level >= 10) {
+        result.alerts.push(`⚠️ MODERATE ANXIETY warning: Last anxiety level was ${lastLog.anxiety_level}/21. Consider active stress relief or mindfulness exercises.`);
+      }
+    }
+    if (lastLog.heart_rate !== null && lastLog.heart_rate !== undefined) {
+      if (lastLog.heart_rate > 100) {
+        result.alerts.push(`⚠️ TACHYCARDIA WARNING: Elevated resting heart rate detected (${lastLog.heart_rate} bpm). Rest and monitor.`);
+      } else if (lastLog.heart_rate < 50) {
+        result.alerts.push(`⚠️ BRADYCARDIA WARNING: Low resting heart rate detected (${lastLog.heart_rate} bpm). Consult a physician if symptomatic.`);
+      }
+    }
+    if (lastLog.peak_flow !== null && lastLog.peak_flow !== undefined) {
+      if (lastLog.peak_flow < 350) {
+        result.alerts.push(`🚨 ASTHMA CRISIS ALERT: Last peak flow of ${lastLog.peak_flow} L/min is in the red zone. Use your rescue inhaler immediately.`);
+      } else if (lastLog.peak_flow < 450) {
+        result.alerts.push(`⚠️ ASTHMA WARNING: Peak flow is in the yellow zone (${lastLog.peak_flow} L/min). Monitor breathing closely.`);
+      }
+    }
+    if (lastLog.inhaler_puffs !== null && lastLog.inhaler_puffs !== undefined) {
+      if (lastLog.inhaler_puffs > 2) {
+        result.alerts.push(`⚠️ EXCESSIVE INHALER USE: You logged ${lastLog.inhaler_puffs} puffs of rescue inhaler. High frequency indicates poor airway control.`);
+      }
+    }
+    if (lastLog.pain_level !== null && lastLog.pain_level !== undefined) {
+      if (lastLog.pain_level >= 7) {
+        result.alerts.push(`🚨 SEVERE PAIN ALERT: Pain intensity is severe (${lastLog.pain_level}/10). Limit physical triggers and review pain management steps.`);
       }
     }
   }
@@ -244,13 +367,43 @@ export function analyzeTrends(logs, targets) {
     result.correlations.push(`🔍 PATTERN ALERT: Skipping breakfast correlates with glucose spikes (>140 mg/dL) in ${percent}% of instances. Consistent meal schedules are highly advised.`);
   }
 
-  // D. General Insights
+  // D. Anxiety & Heart Rate correlation
+  const highAnxietyDays = logs.filter(l => l.anxiety_level !== null && l.anxiety_level >= 10);
+  const highAnxietyHrDays = highAnxietyDays.filter(l => l.heart_rate !== null && l.heart_rate > 90);
+  if (highAnxietyDays.length >= 2 && highAnxietyHrDays.length > 0) {
+    const percent = Math.round((highAnxietyHrDays.length / highAnxietyDays.length) * 100);
+    result.correlations.push(`🔍 ANXIETY COUPLING: Elevated heart rate (>90 bpm) accompanies your high anxiety days (GAD-7 >= 10) in ${percent}% of logs. Incorporate paced breathing.`);
+  }
+
+  // E. Pain & BP correlation
+  const highPainDays = logs.filter(l => l.pain_level !== null && l.pain_level >= 6);
+  const highPainBpDays = highPainDays.filter(l => l.bp_systolic !== null && l.bp_systolic >= 135);
+  if (highPainDays.length >= 2 && highPainBpDays.length > 0) {
+    const percent = Math.round((highPainBpDays.length / highPainDays.length) * 100);
+    result.correlations.push(`🔍 PAIN STRESS COUPLING: Elevated blood pressure (Systolic >= 135 mmHg) is paired with moderate/severe pain days (Pain >= 6) in ${percent}% of logs. Pain management may help stabilize BP.`);
+  }
+
+  // F. Asthma Inhaler & Peak Flow correlation
+  const pfDropDays = logs.filter(l => l.peak_flow !== null && l.peak_flow < 450);
+  const pfDropRescueDays = pfDropDays.filter(l => l.inhaler_puffs !== null && l.inhaler_puffs > 0);
+  if (pfDropDays.length >= 2 && pfDropRescueDays.length > 0) {
+    const percent = Math.round((pfDropRescueDays.length / pfDropDays.length) * 100);
+    result.correlations.push(`🔍 AIRWAY COMPLIANCE: Rescue inhaler use is triggered on ${percent}% of days where peak expiratory flow drops below 450 L/min.`);
+  }
+
+  // G. General Insights
   if (lastLog) {
     if (lastLog.glucose > gMax && lastLog.glucose <= 180) {
       result.insights.push("💡 Last glucose was above target. A brisk 15-minute walk can help lower blood sugar levels naturally.");
     }
     if (lastLog.bp_systolic > bpSysMax && lastLog.bp_systolic < 140) {
       result.insights.push("💡 Last blood pressure was elevated. Make sure to rest for 5 minutes in a quiet room before measuring.");
+    }
+    if (lastLog.anxiety_level !== null && lastLog.anxiety_level >= 5 && lastLog.anxiety_level < 10) {
+      result.insights.push("💡 Mild anxiety logged. Standard guidelines suggest incorporating deep breathing or progressive muscle relaxation.");
+    }
+    if (lastLog.peak_flow !== null && lastLog.peak_flow >= 450 && lastLog.peak_flow < 500) {
+      result.insights.push("💡 Peak flow is stable but slightly under baseline. Avoid cold air or triggers that induce asthma.");
     }
   }
 

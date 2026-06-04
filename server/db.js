@@ -89,6 +89,11 @@ if (isPostgres) {
         bp_diastolic INTEGER,
         meal TEXT,
         symptoms TEXT,
+        anxiety_level INTEGER,
+        heart_rate INTEGER,
+        peak_flow INTEGER,
+        inhaler_puffs INTEGER,
+        pain_level INTEGER,
         PRIMARY KEY (user_id, date),
         FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
       );

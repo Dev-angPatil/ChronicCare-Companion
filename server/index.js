@@ -185,7 +185,12 @@ app.get('/api/logs', authenticateToken, async (req, res) => {
       glucose: l.glucose,
       bp: (l.bp_systolic && l.bp_diastolic) ? `${l.bp_systolic}/${l.bp_diastolic}` : null,
       meal: l.meal,
-      symptoms: l.symptoms
+      symptoms: l.symptoms,
+      anxietyLevel: l.anxiety_level,
+      heartRate: l.heart_rate,
+      peakFlow: l.peak_flow,
+      inhalerPuffs: l.inhaler_puffs,
+      painLevel: l.pain_level
     }));
     res.json(formatted);
   } catch (err) {
@@ -195,7 +200,7 @@ app.get('/api/logs', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/logs', authenticateToken, async (req, res) => {
-  const { date, glucose, bp, meal, symptoms } = req.body;
+  const { date, glucose, bp, meal, symptoms, anxietyLevel, heartRate, peakFlow, inhalerPuffs, painLevel } = req.body;
   let bpSys = null;
   let bpDia = null;
 
@@ -209,15 +214,30 @@ app.post('/api/logs', authenticateToken, async (req, res) => {
 
   try {
     await runQuery(`
-      INSERT INTO logs (user_id, date, glucose, bp_systolic, bp_diastolic, meal, symptoms)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO logs (
+        user_id, date, glucose, bp_systolic, bp_diastolic, meal, symptoms,
+        anxiety_level, heart_rate, peak_flow, inhaler_puffs, pain_level
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(user_id, date) DO UPDATE SET
         glucose = COALESCE(excluded.glucose, glucose),
         bp_systolic = COALESCE(excluded.bp_systolic, bp_systolic),
         bp_diastolic = COALESCE(excluded.bp_diastolic, bp_diastolic),
         meal = excluded.meal,
-        symptoms = excluded.symptoms
-    `, [req.userId, date, glucose, bpSys, bpDia, meal, symptoms]);
+        symptoms = excluded.symptoms,
+        anxiety_level = COALESCE(excluded.anxiety_level, anxiety_level),
+        heart_rate = COALESCE(excluded.heart_rate, heart_rate),
+        peak_flow = COALESCE(excluded.peak_flow, peak_flow),
+        inhaler_puffs = COALESCE(excluded.inhaler_puffs, inhaler_puffs),
+        pain_level = COALESCE(excluded.pain_level, pain_level)
+    `, [
+      req.userId, date, glucose, bpSys, bpDia, meal, symptoms,
+      anxietyLevel ? Number(anxietyLevel) : null,
+      heartRate ? Number(heartRate) : null,
+      peakFlow ? Number(peakFlow) : null,
+      inhalerPuffs ? Number(inhalerPuffs) : null,
+      painLevel ? Number(painLevel) : null
+    ]);
 
     res.json({ success: true });
   } catch (err) {
@@ -455,7 +475,12 @@ app.get('/api/physician/patient/:id/logs', authenticateToken, requirePhysician, 
       glucose: l.glucose,
       bp: (l.bp_systolic && l.bp_diastolic) ? `${l.bp_systolic}/${l.bp_diastolic}` : null,
       meal: l.meal,
-      symptoms: l.symptoms
+      symptoms: l.symptoms,
+      anxietyLevel: l.anxiety_level,
+      heartRate: l.heart_rate,
+      peakFlow: l.peak_flow,
+      inhalerPuffs: l.inhaler_puffs,
+      painLevel: l.pain_level
     }));
 
     const profile = await getRow('SELECT * FROM profiles WHERE user_id = ?', [id]);

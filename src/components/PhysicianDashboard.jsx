@@ -139,9 +139,16 @@ export default function PhysicianDashboard({ onLogout }) {
                     <div className="med-item-info">
                       <strong style={{ color: 'var(--text-primary)' }}>{p.name}</strong>
                       <span className="text-muted text-sm">{p.email}</span>
-                      <span className="badge badge-secondary" style={{ width: 'fit-content', marginTop: '4px' }}>
-                        {p.bp_stage || 'Normal'}
-                      </span>
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '6px' }}>
+                        {p.conditions && p.conditions.split(',').map((cond, i) => (
+                          <span key={i} className="badge badge-secondary" style={{ fontSize: '0.7rem', padding: '2px 8px' }}>
+                            {cond.trim()}
+                          </span>
+                        ))}
+                        <span className="badge" style={{ fontSize: '0.7rem', padding: '2px 8px', backgroundColor: 'var(--primary-glow)', color: 'var(--primary)' }}>
+                          {p.bp_stage || 'Normal'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 ))
@@ -290,17 +297,47 @@ export default function PhysicianDashboard({ onLogout }) {
                             {log.meal === 'skipped' ? '⚠️ Skipped Breakfast' : 'Breakfast Consumed'}
                           </div>
                         </div>
-                        <div style={{ display: 'flex', gap: '20px' }}>
+                        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginTop: '8px' }}>
                           {log.glucose && (
                             <div>
-                              <span className="text-muted text-sm">Glucose:</span>
-                              <div style={{ fontWeight: '600' }}>{log.glucose} mg/dL</div>
+                              <span className="text-muted text-xs">Glucose:</span>
+                              <div style={{ fontWeight: '600', fontSize: '0.85rem' }}>{log.glucose} mg/dL</div>
                             </div>
                           )}
                           {log.bp && (
                             <div>
-                              <span className="text-muted text-sm">Blood Pressure:</span>
-                              <div style={{ fontWeight: '600' }}>{log.bp} mmHg</div>
+                              <span className="text-muted text-xs">BP:</span>
+                              <div style={{ fontWeight: '600', fontSize: '0.85rem' }}>{log.bp} mmHg</div>
+                            </div>
+                          )}
+                          {log.anxietyLevel !== null && log.anxietyLevel !== undefined && (
+                            <div>
+                              <span className="text-muted text-xs">Anxiety (GAD-7):</span>
+                              <div style={{ fontWeight: '600', fontSize: '0.85rem' }}>{log.anxietyLevel}/21</div>
+                            </div>
+                          )}
+                          {log.heartRate !== null && log.heartRate !== undefined && (
+                            <div>
+                              <span className="text-muted text-xs">Heart Rate:</span>
+                              <div style={{ fontWeight: '600', fontSize: '0.85rem' }}>{log.heartRate} bpm</div>
+                            </div>
+                          )}
+                          {log.peakFlow !== null && log.peakFlow !== undefined && (
+                            <div>
+                              <span className="text-muted text-xs">Peak Flow:</span>
+                              <div style={{ fontWeight: '600', fontSize: '0.85rem' }}>{log.peakFlow} L/min</div>
+                            </div>
+                          )}
+                          {log.inhalerPuffs !== null && log.inhalerPuffs !== undefined && (
+                            <div>
+                              <span className="text-muted text-xs">Inhaler Puffs:</span>
+                              <div style={{ fontWeight: '600', fontSize: '0.85rem' }}>{log.inhalerPuffs} puffs</div>
+                            </div>
+                          )}
+                          {log.painLevel !== null && log.painLevel !== undefined && (
+                            <div>
+                              <span className="text-muted text-xs">Pain Level:</span>
+                              <div style={{ fontWeight: '600', fontSize: '0.85rem' }}>{log.painLevel}/10</div>
                             </div>
                           )}
                         </div>

@@ -7,7 +7,7 @@ export default function OnboardingWizard({ onComplete }) {
   // Step 1: Profile State
   const [profile, setProfileState] = useState({
     name: '',
-    conditions: 'Type 2 diabetes, hypertension',
+    conditions: 'Diabetes, Hypertension',
     physicianName: 'Dr. Evelyn Ramirez',
     physicianPhone: '555-0147',
     physicianClinic: 'Oakridge Primary Care Center',
@@ -32,6 +32,11 @@ export default function OnboardingWizard({ onComplete }) {
     glucose: 110,
     bpSystolic: 120,
     bpDiastolic: 80,
+    anxietyLevel: 5,
+    heartRate: 75,
+    peakFlow: 500,
+    inhalerPuffs: 0,
+    painLevel: 2,
     meal: 'yes',
     symptoms: 'Feeling fine'
   });
@@ -84,15 +89,28 @@ export default function OnboardingWizard({ onComplete }) {
 
       // 4. Save baseline log
       const todayStr = new Date().toLocaleDateString('en-US', { month: 'short', day: '2-digit' }).replace(',', '');
+      
+      const isDiabetes = profile.conditions.toLowerCase().includes('diabetes');
+      const isHypertension = profile.conditions.toLowerCase().includes('hypertension');
+      const isAnxiety = profile.conditions.toLowerCase().includes('anxiety');
+      const isAsthma = profile.conditions.toLowerCase().includes('asthma');
+      const isPain = profile.conditions.toLowerCase().includes('pain');
+
       const initialLog = {
         date: todayStr,
-        glucose: Number(baselineLog.glucose),
-        bp: `${baselineLog.bpSystolic}/${baselineLog.bpDiastolic}`,
-        meal: baselineLog.meal,
-        symptoms: baselineLog.symptoms
+        glucose: isDiabetes ? Number(baselineLog.glucose) : null,
+        bp: (isHypertension || isAnxiety) ? `${baselineLog.bpSystolic}/${baselineLog.bpDiastolic}` : null,
+        meal: isDiabetes ? baselineLog.meal : 'n/a',
+        symptoms: baselineLog.symptoms,
+        anxietyLevel: isAnxiety ? Number(baselineLog.anxietyLevel) : null,
+        heartRate: (isAnxiety || isHypertension) ? Number(baselineLog.heartRate) : null,
+        peakFlow: isAsthma ? Number(baselineLog.peakFlow) : null,
+        inhalerPuffs: isAsthma ? Number(baselineLog.inhalerPuffs) : null,
+        painLevel: isPain ? Number(baselineLog.painLevel) : null
       };
+
       await addLog(initialLog);
-      await logUserActivity('onboarding_complete', 'User completed clinical onboarding wizard.');
+      await logUserActivity('onboarding_complete', `User completed clinical onboarding wizard for conditions: ${profile.conditions}.`);
 
       onComplete();
     } catch (err) {
@@ -136,15 +154,58 @@ export default function OnboardingWizard({ onComplete }) {
             </div>
 
             <div>
-              <label className="input-label" htmlFor="chronic-conditions">Chronic Conditions</label>
-              <input 
-                id="chronic-conditions"
-                type="text" 
-                className="input-field" 
-                placeholder="Type 2 diabetes, hypertension"
-                value={profile.conditions}
-                onChange={e => setProfileState({ ...profile, conditions: e.target.value })}
-              />
+              <label className="input-label">Chronic Conditions Covered</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '10px', marginTop: '8px' }}>
+                {[
+                  { id: 'diabetes', label: 'Diabetes 🩸' },
+                  { id: 'hypertension', label: 'Hypertension 🩺' },
+                  { id: 'anxiety', label: 'Anxiety 🧠' },
+                  { id: 'asthma', label: 'Asthma 🫁' },
+                  { id: 'pain', label: 'Chronic Pain ⚡' }
+                ].map(cond => {
+                  const isChecked = profile.conditions.toLowerCase().includes(cond.id) || (cond.id === 'diabetes' && profile.conditions.toLowerCase().includes('diabetes'));
+                  const handleToggle = () => {
+                    let currentList = profile.conditions.split(',').map(s => s.trim()).filter(Boolean);
+                    const condLabel = cond.label.split(' ')[0];
+                    const actualLabel = cond.id === 'pain' ? 'Chronic Pain' : condLabel;
+                    
+                    if (isChecked) {
+                      currentList = currentList.filter(c => c.toLowerCase() !== actualLabel.toLowerCase() && c.toLowerCase() !== cond.id);
+                    } else {
+                      currentList.push(actualLabel);
+                    }
+                    setProfileState({ ...profile, conditions: currentList.join(', ') });
+                  };
+
+                  return (
+                    <div 
+                      key={cond.id} 
+                      onClick={handleToggle}
+                      style={{
+                        padding: '12px',
+                        border: isChecked ? '2px solid var(--primary)' : '1px solid var(--border-color)',
+                        borderRadius: '16px',
+                        cursor: 'pointer',
+                        background: isChecked ? 'rgba(230, 0, 35, 0.05)' : 'var(--surface-card)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        fontWeight: '600',
+                        fontSize: '0.9rem',
+                        transition: 'all 0.2s ease-in-out'
+                      }}
+                    >
+                      <span>{cond.label}</span>
+                      <input 
+                        type="checkbox" 
+                        checked={isChecked} 
+                        onChange={handleToggle} 
+                        style={{ cursor: 'pointer', accentColor: 'var(--primary)' }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="grid-2">
@@ -312,55 +373,132 @@ export default function OnboardingWizard({ onComplete }) {
               Log your initial biometric values for today to initialize the clinical prediction engine.
             </p>
 
-            <div className="grid-2">
-              <div>
-                <label className="input-label" htmlFor="baseline-glucose">Blood Glucose (mg/dL)</label>
-                <input 
-                  id="baseline-glucose"
-                  type="number" 
-                  className="input-field" 
-                  value={baselineLog.glucose}
-                  onChange={e => setBaselineLog({ ...baselineLog, glucose: Number(e.target.value) })}
-                />
+            {profile.conditions.toLowerCase().includes('diabetes') && (
+              <div className="grid-2" style={{ marginBottom: '16px' }}>
+                <div>
+                  <label className="input-label" htmlFor="baseline-glucose">Blood Glucose (mg/dL)</label>
+                  <input 
+                    id="baseline-glucose"
+                    type="number" 
+                    className="input-field" 
+                    value={baselineLog.glucose}
+                    onChange={e => setBaselineLog({ ...baselineLog, glucose: Number(e.target.value) })}
+                  />
+                </div>
+                <div>
+                  <label className="input-label" htmlFor="breakfast-status">Breakfast Logged</label>
+                  <select 
+                    id="breakfast-status"
+                    className="input-field"
+                    value={baselineLog.meal}
+                    onChange={e => setBaselineLog({ ...baselineLog, meal: e.target.value })}
+                  >
+                    <option value="yes">Breakfast Consumed</option>
+                    <option value="skipped">Skipped Breakfast</option>
+                  </select>
+                </div>
               </div>
-              <div>
-                <label className="input-label" htmlFor="breakfast-status">Breakfast Logged</label>
-                <select 
-                  id="breakfast-status"
-                  className="input-field"
-                  value={baselineLog.meal}
-                  onChange={e => setBaselineLog({ ...baselineLog, meal: e.target.value })}
-                >
-                  <option value="yes">Breakfast Consumed</option>
-                  <option value="skipped">Skipped Breakfast</option>
-                </select>
-              </div>
-            </div>
+            )}
 
-            <div className="grid-2">
-              <div>
-                <label className="input-label" htmlFor="baseline-systolic">Blood Pressure: Systolic (mmHg)</label>
-                <input 
-                  id="baseline-systolic"
-                  type="number" 
-                  className="input-field" 
-                  placeholder="e.g. 120"
-                  value={baselineLog.bpSystolic}
-                  onChange={e => setBaselineLog({ ...baselineLog, bpSystolic: Number(e.target.value) })}
-                />
+            {(profile.conditions.toLowerCase().includes('hypertension') || profile.conditions.toLowerCase().includes('anxiety')) && (
+              <div className="grid-2" style={{ marginBottom: '16px' }}>
+                <div>
+                  <label className="input-label" htmlFor="baseline-systolic">Blood Pressure: Systolic (mmHg)</label>
+                  <input 
+                    id="baseline-systolic"
+                    type="number" 
+                    className="input-field" 
+                    placeholder="e.g. 120"
+                    value={baselineLog.bpSystolic}
+                    onChange={e => setBaselineLog({ ...baselineLog, bpSystolic: Number(e.target.value) })}
+                  />
+                </div>
+                <div>
+                  <label className="input-label" htmlFor="baseline-diastolic">Blood Pressure: Diastolic (mmHg)</label>
+                  <input 
+                    id="baseline-diastolic"
+                    type="number" 
+                    className="input-field" 
+                    placeholder="e.g. 80"
+                    value={baselineLog.bpDiastolic}
+                    onChange={e => setBaselineLog({ ...baselineLog, bpDiastolic: Number(e.target.value) })}
+                  />
+                </div>
               </div>
-              <div>
-                <label className="input-label" htmlFor="baseline-diastolic">Blood Pressure: Diastolic (mmHg)</label>
-                <input 
-                  id="baseline-diastolic"
-                  type="number" 
-                  className="input-field" 
-                  placeholder="e.g. 80"
-                  value={baselineLog.bpDiastolic}
-                  onChange={e => setBaselineLog({ ...baselineLog, bpDiastolic: Number(e.target.value) })}
-                />
+            )}
+
+            {profile.conditions.toLowerCase().includes('anxiety') && (
+              <div className="grid-2" style={{ marginBottom: '16px' }}>
+                <div>
+                  <label className="input-label" htmlFor="baseline-anxiety">Anxiety GAD-7 Score (0–21)</label>
+                  <input 
+                    id="baseline-anxiety"
+                    type="range"
+                    min="0"
+                    max="21"
+                    className="input-field" 
+                    value={baselineLog.anxietyLevel}
+                    onChange={e => setBaselineLog({ ...baselineLog, anxietyLevel: Number(e.target.value) })}
+                  />
+                  <div style={{ fontSize: '0.8rem', textAlign: 'right', fontWeight: 'bold', color: 'var(--primary)' }}>
+                    Score: {baselineLog.anxietyLevel} ({baselineLog.anxietyLevel < 5 ? 'Minimal' : baselineLog.anxietyLevel < 10 ? 'Mild' : baselineLog.anxietyLevel < 15 ? 'Moderate' : 'Severe'})
+                  </div>
+                </div>
+                <div>
+                  <label className="input-label" htmlFor="baseline-hr">Resting Heart Rate (bpm)</label>
+                  <input 
+                    id="baseline-hr"
+                    type="number"
+                    className="input-field" 
+                    value={baselineLog.heartRate}
+                    onChange={e => setBaselineLog({ ...baselineLog, heartRate: Number(e.target.value) })}
+                  />
+                </div>
               </div>
-            </div>
+            )}
+
+            {profile.conditions.toLowerCase().includes('asthma') && (
+              <div className="grid-2" style={{ marginBottom: '16px' }}>
+                <div>
+                  <label className="input-label" htmlFor="baseline-pf">Peak Expiratory Flow (L/min)</label>
+                  <input 
+                    id="baseline-pf"
+                    type="number"
+                    className="input-field" 
+                    value={baselineLog.peakFlow}
+                    onChange={e => setBaselineLog({ ...baselineLog, peakFlow: Number(e.target.value) })}
+                  />
+                </div>
+                <div>
+                  <label className="input-label" htmlFor="baseline-puffs">Rescue Inhaler Puffs Count</label>
+                  <input 
+                    id="baseline-puffs"
+                    type="number"
+                    className="input-field" 
+                    value={baselineLog.inhalerPuffs}
+                    onChange={e => setBaselineLog({ ...baselineLog, inhalerPuffs: Number(e.target.value) })}
+                  />
+                </div>
+              </div>
+            )}
+
+            {profile.conditions.toLowerCase().includes('pain') && (
+              <div style={{ marginBottom: '16px' }}>
+                <label className="input-label" htmlFor="baseline-pain">Chronic Pain Level (NRS 0–10)</label>
+                <input 
+                  id="baseline-pain"
+                  type="range"
+                  min="0"
+                  max="10"
+                  className="input-field" 
+                  value={baselineLog.painLevel}
+                  onChange={e => setBaselineLog({ ...baselineLog, painLevel: Number(e.target.value) })}
+                />
+                <div style={{ fontSize: '0.8rem', textAlign: 'right', fontWeight: 'bold', color: 'var(--primary)' }}>
+                  Pain: {baselineLog.painLevel}/10 ({baselineLog.painLevel === 0 ? 'No Pain' : baselineLog.painLevel < 4 ? 'Mild' : baselineLog.painLevel < 7 ? 'Moderate' : 'Severe'})
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="input-label" htmlFor="baseline-symptoms">Symptoms Reported</label>

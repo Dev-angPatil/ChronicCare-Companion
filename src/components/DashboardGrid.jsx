@@ -19,6 +19,11 @@ export default function DashboardGrid({ onLogout }) {
   const [logGlucose, setLogGlucose] = useState('');
   const [logBpSys, setLogBpSys] = useState('');
   const [logBpDia, setLogBpDia] = useState('');
+  const [logAnxiety, setLogAnxiety] = useState(5);
+  const [logHeartRate, setLogHeartRate] = useState('');
+  const [logPeakFlow, setLogPeakFlow] = useState('');
+  const [logInhalerPuffs, setLogInhalerPuffs] = useState('');
+  const [logPain, setLogPain] = useState(2);
   const [logMeal, setLogMeal] = useState('yes');
   const [logSymptoms, setLogSymptoms] = useState('');
 
@@ -90,8 +95,15 @@ export default function DashboardGrid({ onLogout }) {
   // 2. Event Handlers
   const handleQuickLog = async (e) => {
     e.preventDefault();
-    if (!logGlucose && !logBpSys) {
-      alert('Please enter at least a Blood Glucose or Blood Pressure value.');
+    
+    const isDiabetes = profile?.conditions?.toLowerCase().includes('diabetes');
+    const isHypertension = profile?.conditions?.toLowerCase().includes('hypertension');
+    const isAnxiety = profile?.conditions?.toLowerCase().includes('anxiety');
+    const isAsthma = profile?.conditions?.toLowerCase().includes('asthma');
+    const isPain = profile?.conditions?.toLowerCase().includes('pain');
+
+    if (!isDiabetes && !isHypertension && !isAnxiety && !isAsthma && !isPain) {
+      alert('Please configure at least one active condition in your profile settings.');
       return;
     }
 
@@ -100,19 +112,29 @@ export default function DashboardGrid({ onLogout }) {
       
       const newEntry = {
         date: todayStr,
-        glucose: logGlucose ? Number(logGlucose) : null,
-        bp: (logBpSys && logBpDia) ? `${logBpSys}/${logBpDia}` : null,
-        meal: logMeal,
-        symptoms: logSymptoms || 'None reported'
+        glucose: isDiabetes && logGlucose ? Number(logGlucose) : null,
+        bp: (isHypertension || isAnxiety) && logBpSys && logBpDia ? `${logBpSys}/${logBpDia}` : null,
+        meal: isDiabetes ? logMeal : 'n/a',
+        symptoms: logSymptoms || 'None reported',
+        anxietyLevel: isAnxiety ? Number(logAnxiety) : null,
+        heartRate: (isAnxiety || isHypertension) && logHeartRate ? Number(logHeartRate) : null,
+        peakFlow: isAsthma && logPeakFlow ? Number(logPeakFlow) : null,
+        inhalerPuffs: isAsthma && logInhalerPuffs ? Number(logInhalerPuffs) : null,
+        painLevel: isPain ? Number(logPain) : null
       };
 
       await addLog(newEntry);
-      await logUserActivity('quick_log', `Logged data: Sugar=${logGlucose || 'N/A'}, BP=${logBpSys ? logBpSys + '/' + logBpDia : 'N/A'}`);
+      await logUserActivity('quick_log', `Logged vitals: Sugar=${logGlucose || 'N/A'}, BP=${logBpSys ? logBpSys + '/' + logBpDia : 'N/A'}, Anxiety=${logAnxiety}, Pain=${logPain}`);
       
       // Clear forms
       setLogGlucose('');
       setLogBpSys('');
       setLogBpDia('');
+      setLogAnxiety(5);
+      setLogHeartRate('');
+      setLogPeakFlow('');
+      setLogInhalerPuffs('');
+      setLogPain(2);
       setLogSymptoms('');
 
       // Reload
@@ -176,42 +198,60 @@ export default function DashboardGrid({ onLogout }) {
       } else {
         assistantText += `Please log your blood pressure so we can check if it aligns with this headache. If it exceeds 140 mmHg, consult ${profile?.physicianName || 'Dr. Ramirez'} immediately.`;
       }
+    } else if (textLower.includes('anxious') || textLower.includes('anxiety') || textLower.includes('panic') || textLower.includes('stress')) {
+      assistantText = `Anxiety and stress are tracked using the validated GAD-7 clinical scale. Your last recorded anxiety score was ${lastLog?.anxietyLevel ?? 'N/A'}/21, with a resting heart rate of ${lastLog?.heartRate ?? 'N/A'} bpm. `;
+      if (lastLog?.anxietyLevel >= 10) {
+        assistantText += `Since your anxiety is currently elevated, clinical recommendations suggest performing paced diaphragmatic breathing (inhaling for 4 seconds, holding for 4, and exhaling for 6) to activate the vagus nerve and slow heart rate.`;
+      } else {
+        assistantText += `Your stress indicators are in a healthy range. Continue tracking daily.`;
+      }
+    } else if (textLower.includes('asthma') || textLower.includes('breath') || textLower.includes('wheez') || textLower.includes('peak flow') || textLower.includes('inhaler')) {
+      assistantText = `Asthma control is monitored via daily Peak Flow (L/min) and rescue inhaler count. Your latest Peak Flow was ${lastLog?.peakFlow ?? 'N/A'} L/min, and you logged ${lastLog?.inhalerPuffs ?? '0'} rescue inhaler puffs. `;
+      if (lastLog?.peakFlow && lastLog.peakFlow < 350) {
+        assistantText += `WARNING: A peak flow below 350 L/min indicates critical airway obstruction. Please utilize your rescue inhaler and notify your physician.`;
+      } else {
+        assistantText += `Your breathing indicators look stable. Regular peak expiratory flow is great for anticipating airway constriction.`;
+      }
+    } else if (textLower.includes('pain') || textLower.includes('hurt') || textLower.includes('ache')) {
+      assistantText = `Chronic pain is measured on the NRS 0-10 intensity scale. Your latest pain intensity was logged at ${lastLog?.painLevel ?? 'N/A'}/10. `;
+      if (lastLog?.painLevel >= 7) {
+        assistantText += `Because your pain is severe, clinical care paths advise limiting physical exertion, employing local thermal therapy, and pacing activities. Contact your physician if it persists.`;
+      } else {
+        assistantText += `Your pain level is currently managed. Remember to practice pacing your activities.`;
+      }
     } else if (textLower.includes('risk') || textLower.includes('predict') || textLower.includes('forecast')) {
       if (analysis.alerts.length > 0) {
         assistantText = `Based on my 48-hour forecasting engine, here are active clinical predictions: \n\n` + 
           analysis.alerts.map(a => `- ${a}`).join('\n') + `\n\nEnsure compliance with your ${meds.filter(m => !m.taken).length} remaining prescriptions today.`;
       } else {
-        assistantText = `Your glucose and blood pressure indicators are currently tracking stably with a wellness compliance score of ${wellnessScore}/100. No critical 48-hour forecasting risks detected. Keep up the consistent logging!`;
+        assistantText = `Your chronic care metrics are tracking stably with a wellness compliance score of ${wellnessScore}/100. No critical 48-hour forecasting risks detected.`;
       }
     } else if (textLower.includes('medication') || textLower.includes('metformin') || textLower.includes('amlodipine')) {
       const untaken = meds.filter(m => !m.taken);
       if (untaken.length > 0) {
-        assistantText = `You have ${untaken.length} medication(s) remaining for today: ${untaken.map(m => m.name).join(', ')}. Please mark them as taken once consumed. Consistent dosing is vital for stabilizing clinical curves.`;
+        assistantText = `You have ${untaken.length} medication(s) remaining for today: ${untaken.map(m => m.name).join(', ')}. Please mark them as taken once consumed.`;
       } else {
-        assistantText = `Excellent! All of today's medications (${meds.map(m => m.name).join(', ')}) have been marked as taken. Compliance is key.`;
+        assistantText = `Excellent! All of today's medications (${meds.map(m => m.name).join(', ')}) have been marked as taken.`;
       }
     } else if (textLower.includes('appointment') || textLower.includes('ramirez') || textLower.includes('summarize')) {
-      const glucoseLogs = logs.filter(l => l.glucose !== null && l.glucose !== undefined);
-      const avgGlucose = glucoseLogs.length > 0 ? Math.round(glucoseLogs.reduce((acc, curr) => acc + curr.glucose, 0) / glucoseLogs.length) : 'N/A';
-      
-      const bpLogs = logs.filter(l => l.bp);
-      const avgSys = bpLogs.length > 0 ? Math.round(bpLogs.reduce((acc, curr) => acc + parseInt(curr.bp.split('/')[0]), 0) / bpLogs.length) : 'N/A';
-      const avgDia = bpLogs.length > 0 ? Math.round(bpLogs.reduce((acc, curr) => acc + parseInt(curr.bp.split('/')[1]), 0) / bpLogs.length) : 'N/A';
-
-      const takenMeds = meds.filter(m => m.taken).length;
-      const compliancePercent = meds.length > 0 ? Math.round((takenMeds / meds.length) * 100) : 100;
+      const avgGlucose = logs.filter(l => l.glucose !== null).length > 0 ? Math.round(logs.filter(l => l.glucose !== null).reduce((acc, c) => acc + c.glucose, 0) / logs.filter(l => l.glucose !== null).length) : 'N/A';
+      const avgHR = logs.filter(l => l.heartRate !== null).length > 0 ? Math.round(logs.filter(l => l.heartRate !== null).reduce((acc, c) => acc + c.heartRate, 0) / logs.filter(l => l.heartRate !== null).length) : 'N/A';
+      const avgPain = logs.filter(l => l.painLevel !== null).length > 0 ? Math.round(logs.filter(l => l.painLevel !== null).reduce((acc, c) => acc + c.painLevel, 0) / logs.filter(l => l.painLevel !== null).length) : 'N/A';
 
       assistantText = `CLINICAL RECORDBANK SUMMARY FOR DR. RAMIREZ:
 - Patient Name: ${profile?.name || 'Patient'}
 - Chronic Conditions: ${profile?.conditions}
-- Average Glucose (Last 7 Logs): ${avgGlucose} mg/dL
-- Average BP: ${avgSys}/${avgDia} mmHg
-- Current Medication Compliance: ${compliancePercent}%
+- Average Glucose: ${avgGlucose} mg/dL
+- Average Heart Rate: ${avgHR} bpm
+- Average Pain Scale: ${avgPain}/10
 - Target Fasting Range: ${profile?.glucoseFastingTargetMin} - ${profile?.glucoseFastingTargetMax} mg/dL
-- Reported Symptoms: ${logs.slice(-5).map(l => l.symptoms).filter(s => s && s !== 'None').join(', ') || 'None'}`;
+- Active Symptoms: ${logs.slice(-5).map(l => l.symptoms).filter(s => s && s !== 'None').join(', ') || 'None'}`;
     } else {
       assistantText = `Hello. As your clinical wellness assistant, I can check patterns or explain warnings. You can ask me: \n` +
         `- "What are my predicted risks?"\n` +
+        `- "I feel anxious / have panic symptoms"\n` +
+        `- "Check my asthma peak flow or inhaler use"\n` +
+        `- "How is my chronic pain level?"\n` +
         `- "I feel dizzy / have a headache"\n` +
         `- "Check my medication compliance"`;
     }
@@ -273,12 +313,21 @@ export default function DashboardGrid({ onLogout }) {
       alert('No logs available to export.');
       return;
     }
-    const headers = ['Date', 'Glucose (mg/dL)', 'Blood Pressure (mmHg)', 'Meal Breakfast', 'Symptoms'];
+    const headers = [
+      'Date', 'Glucose (mg/dL)', 'Blood Pressure (mmHg)', 'Meal Breakfast', 
+      'Anxiety Level (GAD-7)', 'Heart Rate (bpm)', 'Peak Flow (L/min)', 
+      'Inhaler Puffs', 'Pain Level (NRS)', 'Symptoms'
+    ];
     const rows = logs.map(log => [
       log.date || '',
       log.glucose !== null && log.glucose !== undefined ? log.glucose : '',
       log.bp || '',
       log.meal || '',
+      log.anxietyLevel !== null && log.anxietyLevel !== undefined ? log.anxietyLevel : '',
+      log.heartRate !== null && log.heartRate !== undefined ? log.heartRate : '',
+      log.peakFlow !== null && log.peakFlow !== undefined ? log.peakFlow : '',
+      log.inhalerPuffs !== null && log.inhalerPuffs !== undefined ? log.inhalerPuffs : '',
+      log.painLevel !== null && log.painLevel !== undefined ? log.painLevel : '',
       log.symptoms || ''
     ]);
     
@@ -291,6 +340,7 @@ export default function DashboardGrid({ onLogout }) {
     link.setAttribute("download", `clinical_logs_${profile?.name || 'patient'}.csv`);
     document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
   };
 
   const handleLinkRespond = async (physicianId, accept) => {
@@ -325,6 +375,10 @@ export default function DashboardGrid({ onLogout }) {
             const simulatedDia = Math.floor(Math.random() * 11) + 75;
             setLogBpSys(simulatedSys.toString());
             setLogBpDia(simulatedDia.toString());
+            if (profile?.conditions?.toLowerCase().includes('anxiety') || profile?.conditions?.toLowerCase().includes('hypertension')) {
+              const simulatedHR = Math.floor(Math.random() * 20) + 65;
+              setLogHeartRate(simulatedHR.toString());
+            }
           }
           
           setTimeout(() => {
@@ -626,43 +680,137 @@ export default function DashboardGrid({ onLogout }) {
                 🔌 Sync Device
               </button>
             </div>
-            <form onSubmit={handleQuickLog} className="quick-logger-form">
-              <div>
-                <label className="input-label" htmlFor="quick-glucose">Glucose (mg/dL)</label>
-                <input 
-                  id="quick-glucose"
-                  type="number" 
-                  className="input-field" 
-                  placeholder="e.g. 115"
-                  value={logGlucose}
-                  onChange={e => setLogGlucose(e.target.value)}
-                />
-              </div>
+            <form onSubmit={handleQuickLog} className="quick-logger-form" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {profile?.conditions?.toLowerCase().includes('diabetes') && (
+                <div className="grid-2">
+                  <div>
+                    <label className="input-label" htmlFor="quick-glucose">Glucose (mg/dL)</label>
+                    <input 
+                      id="quick-glucose"
+                      type="number" 
+                      className="input-field" 
+                      placeholder="e.g. 115"
+                      value={logGlucose}
+                      onChange={e => setLogGlucose(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="quick-meal" className="input-label">Breakfast:</label>
+                    <select 
+                      id="quick-meal"
+                      className="input-field" 
+                      value={logMeal}
+                      onChange={e => setLogMeal(e.target.value)}
+                    >
+                      <option value="yes">Consumed</option>
+                      <option value="skipped">Skipped</option>
+                    </select>
+                  </div>
+                </div>
+              )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <div>
-                  <label className="input-label" htmlFor="quick-sys">Systolic</label>
-                  <input 
-                    id="quick-sys"
-                    type="number" 
-                    className="input-field" 
-                    placeholder="120"
-                    value={logBpSys}
-                    onChange={e => setLogBpSys(e.target.value)}
-                  />
+              {(profile?.conditions?.toLowerCase().includes('hypertension') || profile?.conditions?.toLowerCase().includes('anxiety')) && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <div>
+                    <label className="input-label" htmlFor="quick-sys">Systolic BP (mmHg)</label>
+                    <input 
+                      id="quick-sys"
+                      type="number" 
+                      className="input-field" 
+                      placeholder="120"
+                      value={logBpSys}
+                      onChange={e => setLogBpSys(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="input-label" htmlFor="quick-dia">Diastolic BP (mmHg)</label>
+                    <input 
+                      id="quick-dia"
+                      type="number" 
+                      className="input-field" 
+                      placeholder="80"
+                      value={logBpDia}
+                      onChange={e => setLogBpDia(e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="input-label" htmlFor="quick-dia">Diastolic</label>
-                  <input 
-                    id="quick-dia"
-                    type="number" 
-                    className="input-field" 
-                    placeholder="80"
-                    value={logBpDia}
-                    onChange={e => setLogBpDia(e.target.value)}
-                  />
+              )}
+
+              {profile?.conditions?.toLowerCase().includes('anxiety') && (
+                <div className="grid-2">
+                  <div>
+                    <label className="input-label" htmlFor="quick-anxiety">Anxiety level (GAD-7 0–21)</label>
+                    <input 
+                      id="quick-anxiety"
+                      type="range" 
+                      min="0"
+                      max="21"
+                      className="input-field" 
+                      value={logAnxiety}
+                      onChange={e => setLogAnxiety(Number(e.target.value))}
+                    />
+                    <div style={{ fontSize: '0.75rem', textAlign: 'right', fontWeight: 'bold', color: 'var(--primary)' }}>
+                      Score: {logAnxiety}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="input-label" htmlFor="quick-hr">Heart Rate (bpm)</label>
+                    <input 
+                      id="quick-hr"
+                      type="number" 
+                      className="input-field" 
+                      placeholder="e.g. 72"
+                      value={logHeartRate}
+                      onChange={e => setLogHeartRate(e.target.value)}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {profile?.conditions?.toLowerCase().includes('asthma') && (
+                <div className="grid-2">
+                  <div>
+                    <label className="input-label" htmlFor="quick-pf">Peak Flow (L/min)</label>
+                    <input 
+                      id="quick-pf"
+                      type="number" 
+                      className="input-field" 
+                      placeholder="e.g. 500"
+                      value={logPeakFlow}
+                      onChange={e => setLogPeakFlow(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="input-label" htmlFor="quick-puffs">Rescue Inhaler Puffs</label>
+                    <input 
+                      id="quick-puffs"
+                      type="number" 
+                      className="input-field" 
+                      placeholder="e.g. 0"
+                      value={logInhalerPuffs}
+                      onChange={e => setLogInhalerPuffs(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {profile?.conditions?.toLowerCase().includes('pain') && (
+                <div>
+                  <label className="input-label" htmlFor="quick-pain">Pain Intensity (NRS 0–10)</label>
+                  <input 
+                    id="quick-pain"
+                    type="range" 
+                    min="0"
+                    max="10"
+                    className="input-field" 
+                    value={logPain}
+                    onChange={e => setLogPain(Number(e.target.value))}
+                  />
+                  <div style={{ fontSize: '0.75rem', textAlign: 'right', fontWeight: 'bold', color: 'var(--primary)' }}>
+                    Pain: {logPain}/10
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="input-label" htmlFor="quick-symptoms">Symptoms Logged</label>
@@ -676,26 +824,62 @@ export default function DashboardGrid({ onLogout }) {
                 />
               </div>
 
-              <div style={{ gridColumn: 'span 3', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <label htmlFor="quick-meal" className="text-sm text-secondary">Breakfast:</label>
-                  <select 
-                    id="quick-meal"
-                    className="input-field" 
-                    style={{ padding: '6px 12px', width: 'auto' }}
-                    value={logMeal}
-                    onChange={e => setLogMeal(e.target.value)}
-                  >
-                    <option value="yes">Consumed</option>
-                    <option value="skipped">Skipped</option>
-                  </select>
-                </div>
-                
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
                 <button type="submit" className="btn-primary">
                   Log Entry
                 </button>
               </div>
             </form>
+          </div>
+
+          {/* Chronic Disease Educational & Reference Guide */}
+          <div className="glass-panel">
+            <h3 className="heading-card" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>📚 Chronic Disease Reference Guide</h3>
+            <p className="text-secondary text-sm" style={{ marginBottom: '16px' }}>
+              Evidence-based clinical guidelines and targets for your active conditions:
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {profile?.conditions?.toLowerCase().includes('diabetes') && (
+                <div style={{ borderLeft: '3px solid var(--primary)', paddingLeft: '12px', fontSize: '0.85rem' }}>
+                  <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>Diabetes (Glycemic Management)</strong>
+                  <span className="text-muted" style={{ display: 'block', fontSize: '0.8rem', lineHeight: '1.4' }}>
+                    Standard targets: Fasting glucose 80–130 mg/dL, postprandial glucose &lt; 180 mg/dL. Values below 70 mg/dL indicate hypoglycemia, which requires immediate fast-acting carbs (15g).
+                  </span>
+                </div>
+              )}
+              {profile?.conditions?.toLowerCase().includes('hypertension') && (
+                <div style={{ borderLeft: '3px solid var(--primary)', paddingLeft: '12px', fontSize: '0.85rem' }}>
+                  <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>Hypertension (Blood Pressure)</strong>
+                  <span className="text-muted" style={{ display: 'block', fontSize: '0.8rem', lineHeight: '1.4' }}>
+                    Target pressure: &lt; 130/80 mmHg. A systolic level &gt;= 140 mmHg or diastolic level &gt;= 90 mmHg represents Stage 2 Hypertension. Reduce sodium intake and re-test after rest.
+                  </span>
+                </div>
+              )}
+              {profile?.conditions?.toLowerCase().includes('anxiety') && (
+                <div style={{ borderLeft: '3px solid var(--primary)', paddingLeft: '12px', fontSize: '0.85rem' }}>
+                  <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>Anxiety (GAD-7 Clinical Scale)</strong>
+                  <span className="text-muted" style={{ display: 'block', fontSize: '0.8rem', lineHeight: '1.4' }}>
+                    Scores of 0-4 represent minimal anxiety, 5-9 mild, 10-14 moderate, and 15-21 severe. Deep breathing (e.g. 4-4-6 paced counts) stimulates the vagus nerve and helps lower heart rate.
+                  </span>
+                </div>
+              )}
+              {profile?.conditions?.toLowerCase().includes('asthma') && (
+                <div style={{ borderLeft: '3px solid var(--primary)', paddingLeft: '12px', fontSize: '0.85rem' }}>
+                  <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>Asthma (Airway Telemetry)</strong>
+                  <span className="text-muted" style={{ display: 'block', fontSize: '0.8rem', lineHeight: '1.4' }}>
+                    Monitor Peak Flow (PEF, L/min) and rescue puffs. Keep Peak Flow &gt; 400 L/min. A level &lt; 350 L/min indicates airway constriction; administer rescue inhaler immediately.
+                  </span>
+                </div>
+              )}
+              {profile?.conditions?.toLowerCase().includes('pain') && (
+                <div style={{ borderLeft: '3px solid var(--primary)', paddingLeft: '12px', fontSize: '0.85rem' }}>
+                  <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>Chronic Pain (NRS Intensity Scale)</strong>
+                  <span className="text-muted" style={{ display: 'block', fontSize: '0.8rem', lineHeight: '1.4' }}>
+                    Logged on a 0-10 scale. Implement paced activity plans, thermal therapy, and mindfulness to manage flare-ups. Severe levels (&gt;= 7/10) require medication and clinic notifications.
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Historical Logs List */}
@@ -710,27 +894,57 @@ export default function DashboardGrid({ onLogout }) {
                     <div className="timeline-card">
                       <div>
                         <strong style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>{log.date}</strong>
-                        <div className="text-muted text-sm">{log.meal === 'skipped' ? '⚠️ Skipped Breakfast' : 'Breakfast Consumed'}</div>
+                        <div className="text-muted text-sm">{log.meal === 'skipped' ? '⚠️ Skipped Breakfast' : log.meal === 'yes' ? 'Breakfast Consumed' : 'N/A'}</div>
                       </div>
                       
-                      <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-                        {log.glucose !== null && (
+                      <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginTop: '8px' }}>
+                        {log.glucose !== null && log.glucose !== undefined && (
                           <div>
-                            <span className="text-muted text-sm">Glucose:</span>
-                            <div style={{ fontWeight: '600', color: (log.glucose < 70 || log.glucose > 130) ? 'var(--color-danger)' : 'var(--text-primary)' }}>{log.glucose} mg/dL</div>
+                            <span className="text-muted text-xs">Glucose:</span>
+                            <div style={{ fontWeight: '600', fontSize: '0.85rem', color: (log.glucose < 70 || log.glucose > 130) ? 'var(--color-danger)' : 'var(--text-primary)' }}>{log.glucose} mg/dL</div>
                           </div>
                         )}
                         {log.bp && (
                           <div>
-                            <span className="text-muted text-sm">Blood Pressure:</span>
-                            <div style={{ fontWeight: '600', color: (parseInt(log.bp.split('/')[0]) >= 140) ? 'var(--color-danger)' : 'var(--text-primary)' }}>{log.bp} mmHg</div>
+                            <span className="text-muted text-xs">BP:</span>
+                            <div style={{ fontWeight: '600', fontSize: '0.85rem', color: (parseInt(log.bp.split('/')[0]) >= 140) ? 'var(--color-danger)' : 'var(--text-primary)' }}>{log.bp} mmHg</div>
+                          </div>
+                        )}
+                        {log.anxietyLevel !== null && log.anxietyLevel !== undefined && (
+                          <div>
+                            <span className="text-muted text-xs">Anxiety (GAD-7):</span>
+                            <div style={{ fontWeight: '600', fontSize: '0.85rem', color: log.anxietyLevel >= 15 ? 'var(--color-danger)' : log.anxietyLevel >= 10 ? 'var(--color-warning)' : 'var(--text-primary)' }}>{log.anxietyLevel}/21</div>
+                          </div>
+                        )}
+                        {log.heartRate !== null && log.heartRate !== undefined && (
+                          <div>
+                            <span className="text-muted text-xs">Heart Rate:</span>
+                            <div style={{ fontWeight: '600', fontSize: '0.85rem', color: (log.heartRate > 100 || log.heartRate < 50) ? 'var(--color-danger)' : 'var(--text-primary)' }}>{log.heartRate} bpm</div>
+                          </div>
+                        )}
+                        {log.peakFlow !== null && log.peakFlow !== undefined && (
+                          <div>
+                            <span className="text-muted text-xs">Peak Flow:</span>
+                            <div style={{ fontWeight: '600', fontSize: '0.85rem', color: log.peakFlow < 350 ? 'var(--color-danger)' : 'var(--text-primary)' }}>{log.peakFlow} L/min</div>
+                          </div>
+                        )}
+                        {log.inhalerPuffs !== null && log.inhalerPuffs !== undefined && (
+                          <div>
+                            <span className="text-muted text-xs">Inhaler Puffs:</span>
+                            <div style={{ fontWeight: '600', fontSize: '0.85rem', color: log.inhalerPuffs > 2 ? 'var(--color-warning)' : 'var(--text-primary)' }}>{log.inhalerPuffs} puffs</div>
+                          </div>
+                        )}
+                        {log.painLevel !== null && log.painLevel !== undefined && (
+                          <div>
+                            <span className="text-muted text-xs">Pain Level:</span>
+                            <div style={{ fontWeight: '600', fontSize: '0.85rem', color: log.painLevel >= 7 ? 'var(--color-danger)' : 'var(--text-primary)' }}>{log.painLevel}/10</div>
                           </div>
                         )}
                       </div>
 
-                      <div style={{ textAlign: 'right' }}>
-                        <span className="text-muted text-sm">Symptoms:</span>
-                        <div className="badge badge-secondary" style={{ display: 'block', width: 'fit-content', marginLeft: 'auto', marginTop: '4px' }}>
+                      <div style={{ textAlign: 'right', marginTop: '8px' }}>
+                        <span className="text-muted text-xs">Symptoms:</span>
+                        <div className="badge badge-secondary" style={{ display: 'block', width: 'fit-content', marginLeft: 'auto', marginTop: '2px' }}>
                           {log.symptoms}
                         </div>
                       </div>
