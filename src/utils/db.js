@@ -11,32 +11,164 @@ function getAuthToken() {
   return localStorage.getItem('cc_token');
 }
 
+// Trigger a custom window event when sync queue changes
+function dispatchSyncQueueUpdate() {
+  const event = new CustomEvent('cc_sync_queue_updated', {
+    detail: { count: getOfflineQueueCount() }
+  });
+  window.dispatchEvent(event);
+}
+
+export function getOfflineQueueCount() {
+  try {
+    const queue = JSON.parse(localStorage.getItem('cc_offline_sync_queue') || '[]');
+    return queue.length;
+  } catch (e) {
+    return 0;
+  }
+}
+
 // Helper: Handle backend fetch and attach JWT Authorization header
 async function apiFetch(endpoint, options = {}) {
   const token = getAuthToken();
+  const method = options.method || 'GET';
   const headers = {
     'Content-Type': 'application/json',
     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
     ...options.headers
   };
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers
-  });
+  try {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers
+    });
 
-  if (response.status === 401 || response.status === 403) {
-    // Session expired or invalid token
-    localStorage.removeItem('cc_token');
-    throw new Error('AUTH_EXPIRED');
+    if (response.status === 401 || response.status === 403) {
+      // Session expired or invalid token
+      localStorage.removeItem('cc_token');
+      throw new Error('AUTH_EXPIRED');
+    }
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Server request failed.');
+    }
+
+    // Cache successful GET responses
+    if (method === 'GET') {
+      localStorage.setItem('cc_cache_' + endpoint, JSON.stringify(data));
+    }
+
+    return data;
+  } catch (err) {
+    if (err.message === 'AUTH_EXPIRED') {
+      throw err;
+    }
+
+    // Detect if this is a network connectivity error
+    const isNetworkError = err.name === 'TypeError' || 
+                           err.message.includes('Failed to fetch') || 
+                           err.message.includes('Failed to execute \'fetch\'') ||
+                           err.message.includes('network');
+
+    if (isNetworkError) {
+      console.warn(`Network error detected during API fetch to ${endpoint}. Attempting offline fallback.`);
+
+      if (method === 'GET') {
+        const cached = localStorage.getItem('cc_cache_' + endpoint);
+        if (cached) {
+          console.log(`Returning cached response for GET ${endpoint}`);
+          return JSON.parse(cached);
+        }
+        throw new Error('You are currently offline, and no cached clinical data is available.');
+      } else {
+        // Do not queue real-time AI companion chatbot requests
+        if (endpoint === '/chat/companion') {
+          throw new Error('Clinical AI Companion requires an active internet connection.');
+        }
+
+        // Queue modifications
+        const queue = JSON.parse(localStorage.getItem('cc_offline_sync_queue') || '[]');
+        queue.push({
+          id: Date.now().toString() + '_' + Math.random().toString(36).substr(2, 5),
+          endpoint,
+          method,
+          body: options.body
+        });
+        localStorage.setItem('cc_offline_sync_queue', JSON.stringify(queue));
+        dispatchSyncQueueUpdate();
+
+        console.log(`Queued offline request: ${method} ${endpoint}`);
+        
+        // Return mock success payload
+        if (endpoint === '/chat') {
+          return { id: 'offline_' + Date.now(), success: true };
+        }
+        return { success: true, offline: true };
+      }
+    }
+
+    throw err;
   }
+}
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.error || 'Server request failed.');
+export async function syncOfflineQueue() {
+  const queueStr = localStorage.getItem('cc_offline_sync_queue');
+  if (!queueStr) return 0;
+  
+  let queue = [];
+  try {
+    queue = JSON.parse(queueStr);
+  } catch (e) {
+    localStorage.removeItem('cc_offline_sync_queue');
+    dispatchSyncQueueUpdate();
+    return 0;
   }
-
-  return data;
+  
+  if (queue.length === 0) return 0;
+  
+  console.log(`Found ${queue.length} offline queued requests. Starting synchronization...`);
+  
+  const remaining = [];
+  
+  for (const item of queue) {
+    try {
+      const token = getAuthToken();
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      };
+      
+      const response = await fetch(`${API_BASE_URL}${item.endpoint}`, {
+        method: item.method,
+        headers,
+        body: item.body
+      });
+      
+      if (!response.ok) {
+        // If it's a client error (e.g. 400 Bad Request, 404), skip it so we don't block sync
+        // Keep in queue if it's a server error (5xx) or if connectivity dropped again
+        if (response.status >= 500) {
+          remaining.push(item);
+        } else {
+          console.warn(`Sync failed for item ${item.endpoint} with status ${response.status}. Skipping.`);
+        }
+      }
+    } catch (err) {
+      console.warn(`Sync fetch failed for ${item.endpoint}. Keeping in queue:`, err);
+      remaining.push(item);
+    }
+  }
+  
+  if (remaining.length > 0) {
+    localStorage.setItem('cc_offline_sync_queue', JSON.stringify(remaining));
+  } else {
+    localStorage.removeItem('cc_offline_sync_queue');
+  }
+  
+  dispatchSyncQueueUpdate();
+  return remaining.length;
 }
 
 /* ----------------------------------------------------
@@ -91,6 +223,14 @@ export async function initDB() {
 
 export async function clearAllLocalData() {
   localStorage.removeItem('cc_token');
+  localStorage.removeItem('cc_offline_sync_queue');
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith('cc_cache_')) {
+      localStorage.removeItem(key);
+    }
+  }
+  dispatchSyncQueueUpdate();
   return Promise.resolve();
 }
 
@@ -269,5 +409,12 @@ export async function respondToLink(physicianId, accept) {
   return await apiFetch('/patient/links/respond', {
     method: 'POST',
     body: JSON.stringify({ physicianId, accept })
+  });
+}
+
+export async function getGeminiResponse(messages, context) {
+  return await apiFetch('/chat/companion', {
+    method: 'POST',
+    body: JSON.stringify({ messages, context })
   });
 }

@@ -19,6 +19,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'CHRONIC_CARE_SECRET_2026_KEY';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || null;
 
 app.use(cors());
 app.use(express.json());
@@ -328,6 +329,71 @@ app.delete('/api/chat', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Clear chat error:', err);
     res.status(500).json({ error: 'Failed to clear chat log.' });
+  }
+});
+
+app.post('/api/chat/companion', authenticateToken, async (req, res) => {
+  if (!GEMINI_API_KEY) {
+    return res.status(501).json({ error: 'GEMINI_API_KEY not configured. Falling back to rule-based engine.' });
+  }
+
+  const { messages, context } = req.body;
+  if (!messages || !Array.isArray(messages)) {
+    return res.status(400).json({ error: 'Messages list is required.' });
+  }
+
+  try {
+    const formattedHistory = messages.slice(-10).map(m => ({
+      role: m.sender === 'user' ? 'user' : 'model',
+      parts: [{ text: m.text }]
+    }));
+
+    // Formulate a clinical context prompt
+    const systemPrompt = `You are a clinical wellness assistant for a chronic care management application called ChronicCare Companion.
+Under GINA, ADA, and ACC/AHA guidelines, your goal is to help patients monitor their chronic conditions (Diabetes, Hypertension, Anxiety GAD-7, Asthma, and Chronic Pain).
+CRITICAL CLINICAL RULES:
+- Never provide formal medical diagnoses or modify drug treatments. Always advise consulting their primary care provider if readings are in dangerous zones.
+- Be supportive, clear, and highly focused on measurement-based care.
+- Reference their current vitals history, target ranges, and active medications if relevant.
+
+Active Patient Context:
+- Patient Profile Name: ${context?.profile?.name || 'Patient'}
+- Chronic Conditions: ${context?.profile?.conditions || 'None configured'}
+- Active Prescriptions: ${JSON.stringify(context?.medications || [])}
+- Target Fasting Glucose: ${context?.profile?.glucoseFastingTargetMin ?? 80} - ${context?.profile?.glucoseFastingTargetMax ?? 130} mg/dL
+- Target Blood Pressure: < ${context?.profile?.bpSystolicTargetMax ?? 130} / ${context?.profile?.bpDiastolicTargetMax ?? 80} mmHg
+- Recent Vitals Logs: ${JSON.stringify((context?.logs || []).slice(-7))}
+
+Provide a helpful, educational response to the user's latest query:`;
+
+    // Incorporate the prompt into the model input
+    const contents = [
+      {
+        role: 'user',
+        parts: [{ text: systemPrompt }]
+      },
+      ...formattedHistory
+    ];
+
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    const response = await fetch(geminiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ contents })
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error?.message || 'Gemini API call failed.');
+    }
+
+    const assistantText = data.candidates?.[0]?.content?.parts?.[0]?.text || 'I am sorry, I am unable to process that request right now.';
+    res.json({ text: assistantText });
+  } catch (err) {
+    console.error('Gemini integration error:', err);
+    res.status(500).json({ error: 'Failed to generate response from Clinical Companion AI.' });
   }
 });
 
