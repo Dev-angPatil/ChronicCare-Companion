@@ -130,13 +130,81 @@ Rather than waiting for a crisis, the backend analytics engine (`server/analysis
 * If a patient’s peak expiratory flow slope is dropping, the engine warns: *“⚠️ PEF trajectory predicts airway obstruction risk within 48 hours. Utilize rescue inhaler.”*
 * If blood pressure shows an upward slope, it projects a **Stage 2 Hypertensive Crisis** warning.
 
-### 5. Autonomic & Cross-Condition Correlation Mapping
-The system analyzes cross-condition biometrics to highlight how one chronic disease triggers another:
-* **Mental-Physical Coupling**: Maps GAD-7 anxiety scores against resting heart rate (vagal tone coupling).
-* **Pain-BP Spikes**: Correlates severe chronic pain (NRS scale) with blood pressure elevations.
-* **Meal compliance**: Correlates skipping breakfast with glycemic spikes, highlighting liver glucose dumping.
+#### Clinical Decision Tree (Slope Analytics):
+```mermaid
+graph TD
+    Logs[Last 7 Biometric Logs] --> Filter[Filter relevant metric entries]
+    Filter --> Points[Map to XY points: X=index, Y=value]
+    Points --> Slope[Calculate Linear Regression Slope]
+    
+    Slope --> CheckGlucose{Is Glucose Slope?}
+    CheckGlucose -->|Yes| G_Slope{Slope < -5 mg/dL/day?}
+    G_Slope -->|Yes| HypoAlert[⚠️ Hypoglycemia Risk Alert: downward trajectory projects crisis]
+    G_Slope -->|No| G_Rise{Slope > 5 mg/dL/day?}
+    G_Rise -->|Yes| HyperAlert[⚠️ Hyperglycemia Alert: monitor carb intake]
+    
+    Slope --> CheckBP{Is BP Systolic Slope?}
+    CheckBP -->|Yes| BP_Slope{Slope > 2 mmHg/day?}
+    BP_Slope -->|Yes| HTNAlert[⚠️ Stage 2 Hypertension Crisis Alert: limit sodium]
+    
+    Slope --> CheckAsthma{Is Peak Flow Slope?}
+    CheckAsthma -->|Yes| PF_Slope{Slope < -10 L/min/day?}
+    PF_Slope -->|Yes| AsthmaAlert[🚨 Asthma Attack Risk: airway restriction projected]
+```
 
-### 6. Print-Friendly Clinician PDF Handout
+---
+
+### 5. Environment-Aware Dual-Database Driver
+The database configuration in `server/db.js` automatically pivots query structures depending on the execution environment. This provides seamless developer setup (SQLite) while matching production requirements (PostgreSQL).
+
+#### Database Routing flow:
+```mermaid
+graph TD
+    Start[Server Boot] --> EnvCheck{DATABASE_URL env variable set?}
+    EnvCheck -->|Yes: Production Cloud| ConnectPostgres[Initialize pg Pool]
+    ConnectPostgres --> QueryP[Direct query calls to PostgreSQL]
+    
+    EnvCheck -->|No: Local Developer| ConnectSQLite[Open server/chronic_care.db via sqlite3]
+    ConnectSQLite --> QueryS[Direct query calls to SQLite]
+    
+    QueryP --> Translate[Return uniform row objects to Express routing]
+    QueryS --> Translate
+```
+
+---
+
+### 6. Demo Presets Seeding Sequence
+The floating Live Demo Control Center leverages a dedicated seeding router (`/api/demo/seed`) to mock patient profiles, wipe existing telemetry lists, and update states instantly without page refreshes.
+
+#### Seeding Data Flow:
+```mermaid
+sequenceDiagram
+    participant U as Presenter UI
+    participant D as Demo Control Center Drawer
+    participant C as db.js Client Proxy
+    participant S as Express API Server
+    participant DB as SQLite DB
+    participant P as Patient Dashboard
+
+    U->>D: Click "Hypertension Slope Crisis"
+    D->>D: Set seeding state = true
+    D->>C: Call seedDemoScenario('hypertension_risk')
+    C->>S: POST /api/demo/seed { scenario: 'hypertension_risk' }
+    S->>DB: DELETE FROM logs WHERE user_id = ?
+    S->>DB: INSERT INTO logs (7 days of rising BP telemetry)
+    S->>DB: UPDATE profiles SET conditions = 'Hypertension'
+    S->>DB: INSERT INTO activity_logs (audit log event)
+    S-->>C: Response 200 OK (success)
+    C-->>D: Resolve API promise
+    D->>P: Trigger onReload() callback
+    P->>S: Fetch latest logs, profile, & analysis data
+    S-->>P: Return updated vitals & active warnings
+    P->>U: Render updated Stage 2 Hypertension Alert UI
+```
+
+---
+
+### 7. Print-Friendly Clinician PDF Handout
 Clicking "Clinician Report" compiles a clean summary (7-day stats, trend slopes, active alerts, correlation metrics, active prescriptions, and physician signature lines). CSS overrides (`@media print`) strip out the sidebar, navigation, header, and chatbot, formatting a pristine black-and-white physical summary.
 
 ---
