@@ -30,3 +30,7 @@ server/chronic_care.db
 # Environment variables
 .env
 *.env
+
+# Design files
+DESIGN.md
+design.md
