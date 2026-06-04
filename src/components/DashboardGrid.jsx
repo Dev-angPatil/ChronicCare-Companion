@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getProfile, getLogs, addLog, getMedications, updateMedication, deleteMedication, getMessages, addMessage, clearMessages, logUserActivity, getAnalysisData, getPatientLinks, respondToLink, getGeminiResponse, getOfflineQueueCount, syncOfflineQueue } from '../utils/db.js';
 import PromptLab from './PromptLab.jsx';
+import DemoControlDrawer from './DemoControlDrawer.jsx';
 
 export default function DashboardGrid({ onLogout }) {
   const [profile, setProfile] = useState(null);
@@ -1620,6 +1621,8 @@ export default function DashboardGrid({ onLogout }) {
         onClose={() => setIsPromptLabOpen(false)} 
         onSelectPrompt={processCompanionQuery} 
       />
+
+      <DemoControlDrawer onReload={loadAllData} />
 
       {isBtModalOpen && (
         <div className="modal-backdrop" onClick={() => btSyncState !== 'syncing' && setIsBtModalOpen(false)}>

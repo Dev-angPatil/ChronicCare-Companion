@@ -418,3 +418,11 @@ export async function getGeminiResponse(messages, context) {
     body: JSON.stringify({ messages, context })
   });
 }
+
+export async function seedDemoScenario(scenario) {
+  return await apiFetch('/demo/seed', {
+    method: 'POST',
+    body: JSON.stringify({ scenario })
+  });
+}
+

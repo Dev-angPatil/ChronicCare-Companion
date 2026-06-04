@@ -612,6 +612,120 @@ app.post('/api/patient/links/respond', authenticateToken, async (req, res) => {
   }
 });
 
+app.post('/api/demo/seed', authenticateToken, async (req, res) => {
+  const { scenario } = req.body;
+  try {
+    await runQuery('DELETE FROM logs WHERE user_id = ?', [req.userId]);
+
+    const dates = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: '2-digit' }).replace(',', '');
+      dates.push(dateStr);
+    }
+
+    let conditions = '';
+    const logsToInsert = [];
+
+    if (scenario === 'stable') {
+      conditions = 'Diabetes, Hypertension';
+      const glucoseVals = [94, 98, 102, 96, 101, 95, 99];
+      const bpSysVals = [118, 120, 117, 119, 121, 118, 120];
+      const bpDiaVals = [76, 78, 75, 77, 79, 76, 78];
+      const anxietyVals = [2, 3, 2, 1, 3, 2, 2];
+      const hrVals = [68, 70, 72, 69, 71, 68, 70];
+      
+      for (let i = 0; i < 7; i++) {
+        logsToInsert.push({
+          date: dates[i],
+          glucose: glucoseVals[i],
+          bpSys: bpSysVals[i],
+          bpDia: bpDiaVals[i],
+          meal: 'yes',
+          symptoms: 'None',
+          anxiety: anxietyVals[i],
+          hr: hrVals[i],
+          pf: null,
+          puffs: null,
+          pain: 1
+        });
+      }
+    } else if (scenario === 'hypertension_risk') {
+      conditions = 'Hypertension';
+      const bpSysVals = [118, 122, 125, 129, 134, 138, 142];
+      const bpDiaVals = [76, 78, 80, 82, 86, 88, 92];
+      
+      for (let i = 0; i < 7; i++) {
+        logsToInsert.push({
+          date: dates[i],
+          glucose: null,
+          bpSys: bpSysVals[i],
+          bpDia: bpDiaVals[i],
+          meal: 'n/a',
+          symptoms: i >= 5 ? 'Mild headache' : 'None',
+          anxiety: null,
+          hr: 70 + i,
+          pf: null,
+          puffs: null,
+          pain: null
+        });
+      }
+    } else if (scenario === 'anxiety_vagal') {
+      conditions = 'Anxiety';
+      const anxietyVals = [4, 5, 12, 6, 15, 8, 18];
+      const hrVals = [70, 72, 88, 74, 94, 78, 98];
+      
+      for (let i = 0; i < 7; i++) {
+        logsToInsert.push({
+          date: dates[i],
+          glucose: null,
+          bpSys: null,
+          bpDia: null,
+          meal: 'n/a',
+          symptoms: anxietyVals[i] >= 10 ? 'Palpitations, mild panic' : 'None',
+          anxiety: anxietyVals[i],
+          hr: hrVals[i],
+          pf: null,
+          puffs: null,
+          pain: null
+        });
+      }
+    } else {
+      return res.status(400).json({ error: 'Invalid demo scenario type.' });
+    }
+
+    for (const log of logsToInsert) {
+      await runQuery(
+        `INSERT INTO logs (
+          user_id, date, glucose, bp_systolic, bp_diastolic, meal, symptoms,
+          anxiety_level, heart_rate, peak_flow, inhaler_puffs, pain_level
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          req.userId, log.date, log.glucose, log.bpSys, log.bpDia, log.meal, log.symptoms,
+          log.anxiety, log.hr, log.pf, log.puffs, log.pain
+        ]
+      );
+    }
+
+    await runQuery(
+      'UPDATE profiles SET conditions = ? WHERE user_id = ?',
+      [conditions, req.userId]
+    );
+
+    await runQuery(
+      'INSERT INTO activity_logs (user_id, action_type, description, timestamp) VALUES (?, ?, ?, ?)',
+      [req.userId, 'demo_seed', `Injected demo scenario: ${scenario}`, new Date().toISOString()]
+    );
+
+    res.json({ success: true, conditions });
+  } catch (err) {
+    console.error('Demo seeding failed:', err);
+    res.status(500).json({ error: 'Failed to inject demo records.' });
+  }
+});
+
+
 // ----------------------------------------------------
 // 9. SECURE SSL / HTTPS BINDINGS
 // ----------------------------------------------------
