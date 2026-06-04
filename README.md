@@ -17,10 +17,16 @@ Built using the **Pinterest Design System** aesthetic (warm-cream theme, `#e6002
 *   **Dual-Database Reliability**: Dual compatibility with local **SQLite** (for easy fallback and local development) and **Supabase PostgreSQL** (production cloud deployment).
 *   **Clinical Risk & Forecast Engine**: Utilizes mathematical **Linear Regression Slope analysis** on historical telemetry to predict 48-hour risk windows (e.g., hypoglycemia, hypertensive crisis, declining peak flow).
 *   **Unified AI Clinical Companion**: An interactive chatbot primed with evidence-based disease guidelines. Handles clinical questions, parses logged metrics, maps correlations, and suggests self-management techniques.
-*   **Web Bluetooth Telemetry Sync**: Supports simulated Web Bluetooth syncing for Omron BP cuffs and Accu-Chek smart glucometers.
 *   **Mutual Consent Physician Linking**: Restricts physician access to patient logs until explicitly approved by the patient via a secure opt-in invitation flow.
 *   **Local Adherence Notifications**: Native browser Notification API alerts reminding users to complete their daily logs and check off prescription adherence.
 *   **Export to CSV**: Downloadable clinical reports for physician consultations.
+
+---
+
+## 🔮 Future Scope & Roadmap
+
+*   **Frictionless Smartwatch Integration**: Sync directly with wearable smartwatches (Apple Watch, Samsung Galaxy Watch, etc.) and Continuous Glucose Monitors (CGM) to extract live, real-time blood pressure and blood glucose telemetry streams.
+*   **Native Web Bluetooth Telemetry**: Establish native Web Bluetooth API pairings with physical clinical devices, such as Omron blood pressure cuffs and Accu-Chek smart glucometers, to automate logging verification.
 
 ---
 
