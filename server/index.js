@@ -6,8 +6,15 @@ import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import fs from 'fs';
+import https from 'https';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { runQuery, getRow, getAllRows } from './db.js';
 import { computeWellnessScore, calculateStreak, analyzeTrends } from './analysis.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -30,8 +37,17 @@ function authenticateToken(req, res, next) {
       return res.status(403).json({ error: 'Invalid or expired token.' });
     }
     req.userId = decoded.userId;
+    req.userRole = decoded.role;
     next();
   });
+}
+
+// Middleware: Verify role is physician
+function requirePhysician(req, res, next) {
+  if (req.userRole !== 'physician') {
+    return res.status(403).json({ error: 'Access denied: Physician credentials required.' });
+  }
+  next();
 }
 
 // ----------------------------------------------------
@@ -39,39 +55,37 @@ function authenticateToken(req, res, next) {
 // ----------------------------------------------------
 
 app.post('/api/auth/register', async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, role } = req.body;
+  const userRole = role === 'physician' ? 'physician' : 'patient';
+
   if (!email || !password) {
     return res.status(400).json({ error: 'Please provide email and password.' });
   }
 
   try {
-    // Check if user exists
     const existing = await getRow('SELECT id FROM users WHERE email = ?', [email]);
     if (existing) {
       return res.status(409).json({ error: 'Email address already registered.' });
     }
 
-    // Hash password
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    // Save User
     const result = await runQuery(
-      'INSERT INTO users (email, password_hash) VALUES (?, ?)',
-      [email, passwordHash]
+      'INSERT INTO users (email, password_hash, role) VALUES (?, ?, ?)',
+      [email, passwordHash, userRole]
     );
 
-    const token = jwt.sign({ userId: result.id }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: result.id, role: userRole }, JWT_SECRET, { expiresIn: '7d' });
 
-    // Log Activity
     await runQuery(
       'INSERT INTO activity_logs (user_id, action_type, description, timestamp) VALUES (?, ?, ?, ?)',
-      [result.id, 'auth_register', `Registered account: ${email}`, new Date().toISOString()]
+      [result.id, 'auth_register', `Registered account: ${email} (${userRole})`, new Date().toISOString()]
     );
 
     res.status(201).json({
       token,
-      user: { id: result.id, email }
+      user: { id: result.id, email, role: userRole }
     });
   } catch (err) {
     console.error('Registration error:', err);
@@ -86,21 +100,18 @@ app.post('/api/auth/login', async (req, res) => {
   }
 
   try {
-    // Find User
     const user = await getRow('SELECT * FROM users WHERE email = ?', [email]);
     if (!user) {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
-    // Verify Password
     const isValid = await bcrypt.compare(password, user.password_hash);
     if (!isValid) {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
-    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
 
-    // Log Activity
     await runQuery(
       'INSERT INTO activity_logs (user_id, action_type, description, timestamp) VALUES (?, ?, ?, ?)',
       [user.id, 'auth_login', `Logged in: ${email}`, new Date().toISOString()]
@@ -108,7 +119,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     res.json({
       token,
-      user: { id: user.id, email: user.email }
+      user: { id: user.id, email: user.email, role: user.role }
     });
   } catch (err) {
     console.error('Login error:', err);
@@ -132,9 +143,7 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
 
 app.post('/api/profile', authenticateToken, async (req, res) => {
   const p = req.body;
-  
   try {
-    // Upsert Profile
     await runQuery(`
       INSERT INTO profiles (
         user_id, name, conditions, physician_name, physician_phone, physician_clinic,
@@ -171,7 +180,6 @@ app.post('/api/profile', authenticateToken, async (req, res) => {
 app.get('/api/logs', authenticateToken, async (req, res) => {
   try {
     const logs = await getAllRows('SELECT * FROM logs WHERE user_id = ? ORDER BY date ASC', [req.userId]);
-    // Format to match frontend structure (bp_systolic/bp_diastolic => bp string)
     const formatted = logs.map(l => ({
       date: l.date,
       glucose: l.glucose,
@@ -370,6 +378,166 @@ app.post('/api/activity_logs', authenticateToken, async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`ChronicCare Server listening on port ${PORT}`);
+// ----------------------------------------------------
+// 8. PHYSICIAN PORTAL API ENDPOINTS
+// ----------------------------------------------------
+
+app.get('/api/physician/patients', authenticateToken, requirePhysician, async (req, res) => {
+  try {
+    const query = `
+      SELECT users.id, users.email, profiles.name, profiles.conditions, profiles.bp_stage, physician_patient_links.status
+      FROM physician_patient_links 
+      JOIN users ON users.id = physician_patient_links.patient_id 
+      JOIN profiles ON profiles.user_id = users.id 
+      WHERE physician_patient_links.physician_id = ?
+    `;
+    const patients = await getAllRows(query, [req.userId]);
+    res.json(patients);
+  } catch (err) {
+    console.error('Fetch physician patients failed:', err);
+    res.status(500).json({ error: 'Failed to retrieve linked patients.' });
+  }
 });
+
+app.post('/api/physician/link', authenticateToken, requirePhysician, async (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: 'Please provide patient email address.' });
+  }
+
+  try {
+    // 1. Check if patient exists
+    const patient = await getRow('SELECT id FROM users WHERE email = ? AND role = \'patient\'', [email]);
+    if (!patient) {
+      return res.status(404).json({ error: 'Patient email address not found.' });
+    }
+
+    // 2. Check if already linked or request exists
+    const linked = await getRow('SELECT status FROM physician_patient_links WHERE physician_id = ? AND patient_id = ?', [req.userId, patient.id]);
+    if (linked) {
+      if (linked.status === 'pending') {
+        return res.status(409).json({ error: 'A pending connection request has already been sent to this patient.' });
+      }
+      return res.status(409).json({ error: 'Patient is already linked to your clinic.' });
+    }
+
+    // 3. Link them with pending status
+    await runQuery('INSERT INTO physician_patient_links (physician_id, patient_id, status) VALUES (?, ?, \'pending\')', [req.userId, patient.id]);
+    
+    // Log Activity
+    await runQuery(
+      'INSERT INTO activity_logs (user_id, action_type, description, timestamp) VALUES (?, ?, ?, ?)',
+      [req.userId, 'link_patient_request', `Requested link with patient: ${email} (pending consent)`, new Date().toISOString()]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Link patient failed:', err);
+    res.status(500).json({ error: 'Failed to link patient account.' });
+  }
+});
+
+app.get('/api/physician/patient/:id/logs', authenticateToken, requirePhysician, async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const verified = await getRow('SELECT status FROM physician_patient_links WHERE physician_id = ? AND patient_id = ?', [req.userId, id]);
+    if (!verified) {
+      return res.status(403).json({ error: 'Access denied: Patient is not linked to your clinic.' });
+    }
+    if (verified.status !== 'active') {
+      return res.status(403).json({ error: 'Access denied: Connection request is still pending patient approval.' });
+    }
+
+    const logs = await getAllRows('SELECT * FROM logs WHERE user_id = ? ORDER BY date ASC', [id]);
+    const formatted = logs.map(l => ({
+      date: l.date,
+      glucose: l.glucose,
+      bp: (l.bp_systolic && l.bp_diastolic) ? `${l.bp_systolic}/${l.bp_diastolic}` : null,
+      meal: l.meal,
+      symptoms: l.symptoms
+    }));
+
+    const profile = await getRow('SELECT * FROM profiles WHERE user_id = ?', [id]);
+
+    res.json({ logs: formatted, profile: profile || null });
+  } catch (err) {
+    console.error('Fetch patient details failed:', err);
+    res.status(500).json({ error: 'Failed to retrieve patient biometrics.' });
+  }
+});
+
+// ----------------------------------------------------
+// 8.5 PATIENT CONCENT LINKING MANAGEMENT ENDPOINTS
+// ----------------------------------------------------
+
+app.get('/api/patient/links', authenticateToken, async (req, res) => {
+  try {
+    const query = `
+      SELECT users.id AS physician_id, users.email AS physician_email, physician_patient_links.status
+      FROM physician_patient_links
+      JOIN users ON users.id = physician_patient_links.physician_id
+      WHERE physician_patient_links.patient_id = ?
+    `;
+    const links = await getAllRows(query, [req.userId]);
+    res.json(links);
+  } catch (err) {
+    console.error('Fetch patient links failed:', err);
+    res.status(500).json({ error: 'Failed to retrieve connection requests.' });
+  }
+});
+
+app.post('/api/patient/links/respond', authenticateToken, async (req, res) => {
+  const { physicianId, accept } = req.body;
+  if (!physicianId) {
+    return res.status(400).json({ error: 'Physician ID is required.' });
+  }
+  try {
+    if (accept) {
+      await runQuery(
+        'UPDATE physician_patient_links SET status = \'active\' WHERE physician_id = ? AND patient_id = ?',
+        [physicianId, req.userId]
+      );
+      
+      await runQuery(
+        'INSERT INTO activity_logs (user_id, action_type, description, timestamp) VALUES (?, ?, ?, ?)',
+        [req.userId, 'approve_link', `Approved connection with physician ID: ${physicianId}`, new Date().toISOString()]
+      );
+    } else {
+      await runQuery(
+        'DELETE FROM physician_patient_links WHERE physician_id = ? AND patient_id = ?',
+        [physicianId, req.userId]
+      );
+      
+      await runQuery(
+        'INSERT INTO activity_logs (user_id, action_type, description, timestamp) VALUES (?, ?, ?, ?)',
+        [req.userId, 'reject_link', `Rejected connection with physician ID: ${physicianId}`, new Date().toISOString()]
+      );
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Respond to link failed:', err);
+    res.status(500).json({ error: 'Failed to update connection request.' });
+  }
+});
+
+// ----------------------------------------------------
+// 9. SECURE SSL / HTTPS BINDINGS
+// ----------------------------------------------------
+
+const sslKeyPath = path.join(__dirname, 'key.pem');
+const sslCertPath = path.join(__dirname, 'cert.pem');
+
+if (fs.existsSync(sslKeyPath) && fs.existsSync(sslCertPath)) {
+  const options = {
+    key: fs.readFileSync(sslKeyPath),
+    cert: fs.readFileSync(sslCertPath)
+  };
+  https.createServer(options, app).listen(PORT, () => {
+    console.log(`ChronicCare Server listening over SECURE HTTPS on port ${PORT}`);
+  });
+} else {
+  app.listen(PORT, () => {
+    console.log(`ChronicCare Server listening over HTTP on port ${PORT}`);
+  });
+}

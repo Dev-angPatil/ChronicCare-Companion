@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getProfile, getLogs, addLog, getMedications, updateMedication, getMessages, addMessage, clearMessages, logUserActivity, getAnalysisData } from '../utils/db.js';
+import { getProfile, getLogs, addLog, getMedications, updateMedication, getMessages, addMessage, clearMessages, logUserActivity, getAnalysisData, getPatientLinks, respondToLink } from '../utils/db.js';
 import PromptLab from './PromptLab.jsx';
 
 export default function DashboardGrid({ onLogout }) {
@@ -25,6 +25,24 @@ export default function DashboardGrid({ onLogout }) {
   // Graph Toggle
   const [graphMode, setGraphMode] = useState('glucose'); // 'glucose' or 'bp'
 
+  // Threshold Tuning States
+  const [isTuningOpen, setIsTuningOpen] = useState(false);
+  const [tuningGlucoseMin, setTuningGlucoseMin] = useState(80);
+  const [tuningGlucoseMax, setTuningGlucoseMax] = useState(130);
+  const [tuningBpSysMax, setTuningBpSysMax] = useState(130);
+  const [tuningBpDiaMax, setTuningBpDiaMax] = useState(80);
+
+  // Connection/Link Requests State
+  const [linkRequests, setLinkRequests] = useState([]);
+
+  // Bluetooth Sync Simulator States
+  const [isBtModalOpen, setIsBtModalOpen] = useState(false);
+  const [btSyncState, setBtSyncState] = useState('idle'); // 'searching', 'found', 'syncing', 'done'
+  const [btDeviceType, setBtDeviceType] = useState('none');
+
+  // Adherence Local Notifications State
+  const [isNotificationEnabled, setIsNotificationEnabled] = useState(false);
+
   // Load dashboard data on mount
   useEffect(() => {
     loadAllData();
@@ -42,8 +60,18 @@ export default function DashboardGrid({ onLogout }) {
       setMeds(medsData);
       setChatMessages(msgsData);
 
-      // Load server-computed clinical analytics
+      // Fetch pending link requests for patient consent
+      const linksData = await getPatientLinks();
+      const pendingLinks = linksData.filter(l => l.status === 'pending');
+      setLinkRequests(pendingLinks);
+
       if (profData) {
+        setTuningGlucoseMin(profData.glucoseFastingTargetMin ?? 80);
+        setTuningGlucoseMax(profData.glucoseFastingTargetMax ?? 130);
+        setTuningBpSysMax(profData.bpSystolicTargetMax ?? 130);
+        setTuningBpDiaMax(profData.bpDiastolicTargetMax ?? 80);
+
+        // Load server-computed clinical analytics
         const analysisData = await getAnalysisData();
         setWellnessScore(analysisData.wellnessScore);
         setStreakDays(analysisData.streakDays);
@@ -213,6 +241,148 @@ export default function DashboardGrid({ onLogout }) {
     }
   };
 
+  const handleUpdateThresholds = async (e) => {
+    e.preventDefault();
+    if (!profile) return;
+    try {
+      const updatedProfile = {
+        name: profile.name,
+        conditions: profile.conditions,
+        physicianName: profile.physicianName,
+        physicianPhone: profile.physicianPhone,
+        physicianClinic: profile.physicianClinic,
+        glucoseFastingTargetMin: Number(tuningGlucoseMin),
+        glucoseFastingTargetMax: Number(tuningGlucoseMax),
+        bpSystolicTargetMax: Number(tuningBpSysMax),
+        bpDiastolicTargetMax: Number(tuningBpDiaMax),
+        bpStage: profile.bpStage || 'Normal'
+      };
+
+      await setProfile(updatedProfile);
+      await logUserActivity('update_thresholds', `Updated target thresholds: Glucose=${tuningGlucoseMin}-${tuningGlucoseMax}, BP=${tuningBpSysMax}/${tuningBpDiaMax}`);
+      setIsTuningOpen(false);
+      await loadAllData();
+    } catch (err) {
+      console.error('Failed to update thresholds:', err);
+      alert('Error updating thresholds: ' + err.message);
+    }
+  };
+
+  const handleExportCSV = () => {
+    if (logs.length === 0) {
+      alert('No logs available to export.');
+      return;
+    }
+    const headers = ['Date', 'Glucose (mg/dL)', 'Blood Pressure (mmHg)', 'Meal Breakfast', 'Symptoms'];
+    const rows = logs.map(log => [
+      log.date || '',
+      log.glucose !== null && log.glucose !== undefined ? log.glucose : '',
+      log.bp || '',
+      log.meal || '',
+      log.symptoms || ''
+    ]);
+    
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(','), ...rows.map(e => e.map(val => `"${val.toString().replace(/"/g, '""')}"`).join(','))].join('\n');
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `clinical_logs_${profile?.name || 'patient'}.csv`);
+    document.body.appendChild(link);
+    link.click();
+  };
+
+  const handleLinkRespond = async (physicianId, accept) => {
+    try {
+      await respondToLink(physicianId, accept);
+      await loadAllData();
+      alert(accept ? 'Physician clinic connection approved!' : 'Connection request declined.');
+    } catch (err) {
+      console.error('Failed to respond to link request:', err);
+      alert('Error updating clinic connection: ' + err.message);
+    }
+  };
+
+  const startBtSync = (type) => {
+    setBtDeviceType(type);
+    setBtSyncState('searching');
+    
+    setTimeout(() => {
+      setBtSyncState('found');
+      
+      setTimeout(() => {
+        setBtSyncState('syncing');
+        
+        setTimeout(() => {
+          setBtSyncState('done');
+          
+          if (type === 'glucometer') {
+            const simulatedGlucose = Math.floor(Math.random() * 36) + 90;
+            setLogGlucose(simulatedGlucose.toString());
+          } else {
+            const simulatedSys = Math.floor(Math.random() * 21) + 115;
+            const simulatedDia = Math.floor(Math.random() * 11) + 75;
+            setLogBpSys(simulatedSys.toString());
+            setLogBpDia(simulatedDia.toString());
+          }
+          
+          setTimeout(() => {
+            setIsBtModalOpen(false);
+            setBtSyncState('idle');
+          }, 1500);
+        }, 1800);
+      }, 1500);
+    }, 2000);
+  };
+
+  useEffect(() => {
+    const storedReminders = localStorage.getItem('cc_reminders') === 'enabled';
+    setIsNotificationEnabled(storedReminders);
+  }, []);
+
+  useEffect(() => {
+    if (!isNotificationEnabled) return;
+
+    const demoTimer = setTimeout(() => {
+      sendLocalNotification(
+        'Medication & Biometrics Check-in',
+        'Friendly daily reminder to log your glucose level and record Metformin ingestion.'
+      );
+    }, 20000);
+
+    return () => clearTimeout(demoTimer);
+  }, [isNotificationEnabled]);
+
+  const sendLocalNotification = (title, body) => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, {
+        body,
+        icon: '/favicon.svg'
+      });
+    }
+  };
+
+  const handleToggleReminders = async () => {
+    if (!isNotificationEnabled) {
+      if ('Notification' in window) {
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+          localStorage.setItem('cc_reminders', 'enabled');
+          setIsNotificationEnabled(true);
+          sendLocalNotification('Reminders Activated', 'You will receive notifications to keep up with your logging schedule.');
+        } else {
+          alert('Permission denied. Please enable notifications in your browser settings.');
+        }
+      } else {
+        alert('This browser does not support notifications.');
+      }
+    } else {
+      localStorage.setItem('cc_reminders', 'disabled');
+      setIsNotificationEnabled(false);
+    }
+  };
+
   // 4. SVG Chart Points Calculator
   const getChartDataPoints = () => {
     if (logs.length === 0) return [];
@@ -259,6 +429,9 @@ export default function DashboardGrid({ onLogout }) {
         </div>
 
         <div style={{ display: 'flex', gap: '16px' }}>
+          <button className="btn-secondary" onClick={handleExportCSV}>
+            📥 Export CSV
+          </button>
           <button className="btn-secondary" onClick={() => setIsPromptLabOpen(true)}>
             💡 Consult Prompt Lab
           </button>
@@ -267,6 +440,28 @@ export default function DashboardGrid({ onLogout }) {
           </button>
         </div>
       </header>
+
+      {/* Pending Consent Link Requests Banner */}
+      {linkRequests.length > 0 && (
+        <div style={{ margin: '24px 32px 0 32px', backgroundColor: 'var(--color-warning-bg)', border: '1px solid rgba(126, 35, 139, 0.15)', borderRadius: 'var(--radius-md)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+          <div style={{ textAlign: 'left' }}>
+            <strong style={{ color: 'var(--color-warning)', fontSize: '0.9rem', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px' }}>
+              🔔 Secure Connection Request Received
+            </strong>
+            <span style={{ fontSize: '0.85rem', color: 'var(--ink)' }}>
+              Physician <strong>{linkRequests[0].physician_email}</strong> is requesting secure access to view your chronic care logs and predictions.
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button className="btn-primary" style={{ height: '32px', padding: '0 12px', fontSize: '12px' }} onClick={() => handleLinkRespond(linkRequests[0].physician_id, true)}>
+              Approve Access
+            </button>
+            <button className="btn-secondary" style={{ height: '32px', padding: '0 12px', fontSize: '12px', backgroundColor: 'rgba(0, 0, 0, 0.05)' }} onClick={() => handleLinkRespond(linkRequests[0].physician_id, false)}>
+              Reject
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Grid Workspace */}
       <main className="dashboard-main">
@@ -420,7 +615,17 @@ export default function DashboardGrid({ onLogout }) {
 
           {/* Quick Check-in Logger */}
           <div className="glass-panel">
-            <h3 className="heading-card" style={{ marginBottom: '16px' }}>Quick Biometric Entry</h3>
+            <div className="flex-between" style={{ marginBottom: '16px' }}>
+              <h3 className="heading-card">Quick Biometric Entry</h3>
+              <button 
+                type="button" 
+                className="btn-secondary" 
+                style={{ height: '32px', padding: '0 12px', fontSize: '12px', backgroundColor: 'var(--secondary-bg)' }}
+                onClick={() => setIsBtModalOpen(true)}
+              >
+                🔌 Sync Device
+              </button>
+            </div>
             <form onSubmit={handleQuickLog} className="quick-logger-form">
               <div>
                 <label className="input-label" htmlFor="quick-glucose">Glucose (mg/dL)</label>
@@ -559,6 +764,103 @@ export default function DashboardGrid({ onLogout }) {
             </div>
           </div>
 
+          {/* Clinical Targets & Thresholds */}
+          <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <h3 className="heading-card">Clinical Target Thresholds</h3>
+            {!isTuningOpen ? (
+              <>
+                <div className="meds-grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <div style={{ padding: '8px', border: '1px solid var(--border-light)', borderRadius: '8px' }}>
+                    <span className="text-muted text-xs" style={{ display: 'block' }}>Fasting Glucose</span>
+                    <strong style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>
+                      {profile?.glucoseFastingTargetMin} - {profile?.glucoseFastingTargetMax} mg/dL
+                    </strong>
+                  </div>
+                  <div style={{ padding: '8px', border: '1px solid var(--border-light)', borderRadius: '8px' }}>
+                    <span className="text-muted text-xs" style={{ display: 'block' }}>Max Blood Pressure</span>
+                    <strong style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>
+                      {profile?.bpSystolicTargetMax}/{profile?.bpDiastolicTargetMax} mmHg
+                    </strong>
+                  </div>
+                </div>
+                <button className="btn-secondary" onClick={() => setIsTuningOpen(true)} style={{ justifyContent: 'center', fontSize: '0.85rem' }}>
+                  ⚙️ Tune Thresholds
+                </button>
+              </>
+            ) : (
+              <form onSubmit={handleUpdateThresholds} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <div>
+                    <label className="input-label" style={{ fontSize: '0.7rem' }}>Glucose Min</label>
+                    <input 
+                      type="number" 
+                      className="input-field" 
+                      style={{ padding: '6px', fontSize: '0.85rem' }}
+                      value={tuningGlucoseMin} 
+                      onChange={e => setTuningGlucoseMin(e.target.value)} 
+                      required 
+                    />
+                  </div>
+                  <div>
+                    <label className="input-label" style={{ fontSize: '0.7rem' }}>Glucose Max</label>
+                    <input 
+                      type="number" 
+                      className="input-field" 
+                      style={{ padding: '6px', fontSize: '0.85rem' }}
+                      value={tuningGlucoseMax} 
+                      onChange={e => setTuningGlucoseMax(e.target.value)} 
+                      required 
+                    />
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <div>
+                    <label className="input-label" style={{ fontSize: '0.7rem' }}>Systolic Max</label>
+                    <input 
+                      type="number" 
+                      className="input-field" 
+                      style={{ padding: '6px', fontSize: '0.85rem' }}
+                      value={tuningBpSysMax} 
+                      onChange={e => setTuningBpSysMax(e.target.value)} 
+                      required 
+                    />
+                  </div>
+                  <div>
+                    <label className="input-label" style={{ fontSize: '0.7rem' }}>Diastolic Max</label>
+                    <input 
+                      type="number" 
+                      className="input-field" 
+                      style={{ padding: '6px', fontSize: '0.85rem' }}
+                      value={tuningBpDiaMax} 
+                      onChange={e => setTuningBpDiaMax(e.target.value)} 
+                      required 
+                    />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                  <button type="submit" className="btn-primary" style={{ flex: 1, justifyContent: 'center', padding: '6px', fontSize: '0.85rem' }}>Save</button>
+                  <button type="button" className="btn-secondary" style={{ flex: 1, justifyContent: 'center', padding: '6px', fontSize: '0.85rem' }} onClick={() => setIsTuningOpen(false)}>Cancel</button>
+                </div>
+              </form>
+            )}
+
+            {/* Toggle reminders */}
+            <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--hairline-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ textAlign: 'left' }}>
+                <span className="input-label" style={{ margin: 0, fontSize: '0.85rem' }}>Adherence Alerts</span>
+                <span className="text-muted text-xs" style={{ display: 'block' }}>Get reminders to log vitals</span>
+              </div>
+              <button 
+                type="button"
+                className={`btn-secondary ${isNotificationEnabled ? 'btn-primary' : ''}`}
+                style={{ height: '32px', padding: '0 12px', fontSize: '12px', backgroundColor: isNotificationEnabled ? 'var(--primary)' : 'var(--secondary-bg)', color: isNotificationEnabled ? '#fff' : 'var(--ink)' }}
+                onClick={handleToggleReminders}
+              >
+                {isNotificationEnabled ? '🔔 Active' : '🔕 Disabled'}
+              </button>
+            </div>
+          </div>
+
           {/* Physician details */}
           <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <h3 className="heading-card">Physician Contacts</h3>
@@ -621,6 +923,87 @@ export default function DashboardGrid({ onLogout }) {
         onClose={() => setIsPromptLabOpen(false)} 
         onSelectPrompt={processCompanionQuery} 
       />
+
+      {isBtModalOpen && (
+        <div className="modal-backdrop" onClick={() => btSyncState !== 'syncing' && setIsBtModalOpen(false)}>
+          <div className="modal-content-card" onClick={e => e.stopPropagation()}>
+            {btSyncState === 'idle' && (
+              <>
+                <h3 className="font-serif" style={{ fontSize: '1.25rem', marginBottom: '12px', textAlign: 'center' }}>Vitals Bluetooth Sync</h3>
+                <p className="text-muted text-sm" style={{ marginBottom: '24px', textAlign: 'center' }}>
+                  Turn on your glucometer or blood pressure cuff and place it near your device. Select the monitor to pair:
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <button 
+                    type="button" 
+                    className="btn-secondary" 
+                    style={{ height: '90px', flexDirection: 'column', width: '100%', borderRadius: '12px', gap: '8px' }}
+                    onClick={() => startBtSync('glucometer')}
+                  >
+                    <span style={{ fontSize: '1.5rem' }}>🩸</span>
+                    <strong>Glucometer Sync</strong>
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn-secondary" 
+                    style={{ height: '90px', flexDirection: 'column', width: '100%', borderRadius: '12px', gap: '8px' }}
+                    onClick={() => startBtSync('bp_cuff')}
+                  >
+                    <span style={{ fontSize: '1.5rem' }}>🩺</span>
+                    <strong>BP Cuff Sync</strong>
+                  </button>
+                </div>
+              </>
+            )}
+
+            {btSyncState === 'searching' && (
+              <div style={{ padding: '20px 0', textAlign: 'center' }}>
+                <div style={{ margin: '0 auto 20px auto', width: '50px', height: '50px', borderRadius: '50%', border: '4px solid var(--primary)', borderTopColor: 'transparent', animation: 'spin 1s linear infinite' }} />
+                <h4 className="font-serif" style={{ fontSize: '1.1rem', marginBottom: '8px' }}>Scanning for clinical channels...</h4>
+                <p className="text-muted text-xs">Searching for active Bluetooth medical transmitters...</p>
+              </div>
+            )}
+
+            {btSyncState === 'found' && (
+              <div style={{ padding: '20px 0', textAlign: 'center' }}>
+                <span style={{ fontSize: '3rem', display: 'block', marginBottom: '12px' }}>📶</span>
+                <h4 className="font-serif" style={{ fontSize: '1.1rem', marginBottom: '8px', color: 'var(--color-success)' }}>
+                  {btDeviceType === 'glucometer' ? 'Accu-Chek Smart' : 'Omron Series 7'} Identified
+                </h4>
+                <p className="text-muted text-xs">Establishing secure pairing handshake...</p>
+              </div>
+            )}
+
+            {btSyncState === 'syncing' && (
+              <div style={{ padding: '20px 0', textAlign: 'center' }}>
+                <div style={{ margin: '0 auto 20px auto', width: '50px', height: '50px', borderRadius: '50%', backgroundColor: 'var(--color-success-bg)', display: 'flex', alignItems: 'center', justifySelf: 'center', justifyContent: 'center', animation: 'ping 1.5s ease-in-out infinite' }}>
+                  <span style={{ fontSize: '1.5rem' }}>📥</span>
+                </div>
+                <h4 className="font-serif" style={{ fontSize: '1.1rem', marginBottom: '8px' }}>Syncing telemetry data...</h4>
+                <p className="text-muted text-xs">Downloading biometric streams securely...</p>
+              </div>
+            )}
+
+            {btSyncState === 'done' && (
+              <div style={{ padding: '20px 0', textAlign: 'center' }}>
+                <span style={{ fontSize: '3rem', display: 'block', marginBottom: '12px' }}>✅</span>
+                <h4 className="font-serif" style={{ fontSize: '1.1rem', marginBottom: '8px', color: 'var(--color-success)' }}>Sync Complete!</h4>
+                <p className="text-muted text-xs">Vitals successfully downloaded and prefilled in your log form.</p>
+              </div>
+            )}
+
+            <button 
+              type="button" 
+              className="btn-secondary" 
+              style={{ marginTop: '24px', width: '100%', justifyContent: 'center' }}
+              onClick={() => setIsBtModalOpen(false)}
+              disabled={btSyncState === 'syncing'}
+            >
+              {btSyncState === 'done' ? 'Close' : 'Cancel'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

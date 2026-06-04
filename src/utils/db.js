@@ -55,10 +55,10 @@ export async function loginWithEmail(email, password) {
   return { user: data.user };
 }
 
-export async function registerWithEmail(email, password) {
+export async function registerWithEmail(email, password, role) {
   const data = await apiFetch('/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ email, password })
+    body: JSON.stringify({ email, password, role })
   });
 
   if (data.token) {
@@ -236,4 +236,38 @@ export async function logUserActivity(actionType, description) {
   } catch (err) {
     console.warn('Silent log entry ignored (unauthenticated session).');
   }
+}
+
+/* ----------------------------------------------------
+   PHYSICIAN PORTAL API CALLS
+   ---------------------------------------------------- */
+
+export async function getPhysicianPatients() {
+  return await apiFetch('/physician/patients');
+}
+
+export async function linkPatient(email) {
+  return await apiFetch('/physician/link', {
+    method: 'POST',
+    body: JSON.stringify({ email })
+  });
+}
+
+export async function getPatientLogs(id) {
+  return await apiFetch(`/physician/patient/${id}/logs`);
+}
+
+/* ----------------------------------------------------
+   PATIENT CONSENT LINKING CALLS
+   ---------------------------------------------------- */
+
+export async function getPatientLinks() {
+  return await apiFetch('/patient/links');
+}
+
+export async function respondToLink(physicianId, accept) {
+  return await apiFetch('/patient/links/respond', {
+    method: 'POST',
+    body: JSON.stringify({ physicianId, accept })
+  });
 }

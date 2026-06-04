@@ -14,8 +14,12 @@ export default function useSyncState() {
     const token = localStorage.getItem('cc_token');
     if (token) {
       try {
+        const payloadBase64 = token.split('.')[1];
+        const decodedPayload = JSON.parse(atob(payloadBase64));
+        const role = decodedPayload.role || 'patient';
+        
         const prof = await getProfile();
-        setUser({ authenticated: true });
+        setUser({ authenticated: true, role });
         setHasProfile(!!prof);
       } catch (err) {
         console.error('Session verification failed, logging out:', err);

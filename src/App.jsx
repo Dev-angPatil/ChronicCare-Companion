@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import useSyncState from './hooks/useSyncState.js';
 import GlowBackground from './components/GlowBackground.jsx';
 import LandingPage from './components/LandingPage.jsx';
 import OnboardingWizard from './components/OnboardingWizard.jsx';
 import DashboardGrid from './components/DashboardGrid.jsx';
+import PhysicianDashboard from './components/PhysicianDashboard.jsx';
 
 function App() {
   const {
@@ -13,6 +14,29 @@ function App() {
     logout,
     refreshProfileCheck
   } = useSyncState();
+
+  // Inactivity timeout: 15 minutes of no mouse/keyboard interaction will logout
+  useEffect(() => {
+    if (!user) return;
+
+    let timeoutId;
+    const resetTimeout = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        alert('Session expired due to 15 minutes of inactivity.');
+        logout();
+      }, 15 * 60 * 1000);
+    };
+
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    events.forEach(evt => document.addEventListener(evt, resetTimeout));
+    resetTimeout();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      events.forEach(evt => document.removeEventListener(evt, resetTimeout));
+    };
+  }, [user, logout]);
 
   // 1. Loading screen
   if (loading) {
@@ -55,6 +79,15 @@ function App() {
   }
 
   // 3. New User Onboarding Setup
+  if (user.role === 'physician') {
+    return (
+      <>
+        <GlowBackground />
+        <PhysicianDashboard onLogout={logout} />
+      </>
+    );
+  }
+
   if (!hasProfile) {
     return (
       <>

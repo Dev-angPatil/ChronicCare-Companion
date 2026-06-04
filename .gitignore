@@ -26,3 +26,7 @@ dist-ssr
 # Server dependencies & sqlite
 server/node_modules
 server/chronic_care.db
+
+# Environment variables
+.env
+*.env
