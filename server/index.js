@@ -240,6 +240,16 @@ app.post('/api/logs', authenticateToken, async (req, res) => {
       painLevel ? Number(painLevel) : null
     ]);
 
+    // Update profiles table with calculated bp stage if bp was logged
+    if (bpSys !== null && bpDia !== null) {
+      let stage = 'Normal';
+      if (bpSys >= 140 || bpDia >= 90) stage = 'Stage 2 Hypertension';
+      else if ((bpSys >= 130 && bpSys <= 139) || (bpDia >= 80 && bpDia <= 89)) stage = 'Stage 1 Hypertension';
+      else if (bpSys >= 120 && bpSys <= 129 && bpDia < 80) stage = 'Elevated Blood Pressure';
+      
+      await runQuery('UPDATE profiles SET bp_stage = ? WHERE user_id = ?', [stage, req.userId]);
+    }
+
     res.json({ success: true });
   } catch (err) {
     console.error('Save log error:', err);

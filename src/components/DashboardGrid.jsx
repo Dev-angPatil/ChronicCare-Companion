@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getProfile, getLogs, addLog, getMedications, updateMedication, deleteMedication, getMessages, addMessage, clearMessages, logUserActivity, getAnalysisData, getPatientLinks, respondToLink, getGeminiResponse, getOfflineQueueCount, syncOfflineQueue } from '../utils/db.js';
+import { getProfile, getLogs, addLog, getMedications, updateMedication, deleteMedication, getMessages, addMessage, clearMessages, logUserActivity, getAnalysisData, getPatientLinks, respondToLink, getGeminiResponse, getOfflineQueueCount, syncOfflineQueue, seedDemoScenario } from '../utils/db.js';
 import PromptLab from './PromptLab.jsx';
 import DemoControlDrawer from './DemoControlDrawer.jsx';
 
@@ -61,6 +61,10 @@ export default function DashboardGrid({ onLogout }) {
 
   // Clinician Report State
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+
+  // Android App Redesign states
+  const [activeTab, setActiveTab] = useState('home'); // 'home' | 'logs' | 'meds' | 'chat' | 'profile'
+  const [isQuickLogOpen, setIsQuickLogOpen] = useState(false);
 
   // Medication CRUD States
   const [isAddingMed, setIsAddingMed] = useState(false);
@@ -863,36 +867,44 @@ export default function DashboardGrid({ onLogout }) {
   // 4. SVG Chart Points Calculator
   const getChartDataPoints = () => {
     if (logs.length === 0) return [];
-    
-    // Sort logs by date order if needed
-    // Map logs to coordinates inside 0-500 X, 0-150 Y grid
-    const chartLogs = [...logs].slice(-7); // Last 7 entries
-    
-    return chartLogs.map((log, idx) => {
-      const x = 50 + (idx * 65); // Distributed along X
-      let y = 150; // Default bottom
+    const chartLogs = [...logs].slice(-7);
+    const validPoints = [];
+
+    chartLogs.forEach((log, idx) => {
+      const x = 50 + (idx * 65);
+      let y = 150;
       let rawVal = 0;
+      let hasVal = false;
 
       if (graphMode === 'glucose') {
-        rawVal = log.glucose || 0;
-        // Map 40 to 220 glucose range onto 180 to 20 Y height
-        y = 180 - ((rawVal - 40) / 180) * 160;
+        if (log.glucose !== null && log.glucose !== undefined) {
+          rawVal = log.glucose;
+          y = 180 - ((rawVal - 40) / 180) * 160;
+          hasVal = true;
+        }
       } else {
-        // Blood pressure systolic
-        rawVal = log.bp ? parseInt(log.bp.split('/')[0]) : 0;
-        // Map 80 to 180 BP range onto 180 to 20 Y height
-        y = 180 - ((rawVal - 80) / 100) * 160;
+        if (log.bp) {
+          const sys = parseInt(log.bp.split('/')[0]);
+          if (!isNaN(sys)) {
+            rawVal = sys;
+            y = 180 - ((rawVal - 80) / 100) * 160;
+            hasVal = true;
+          }
+        }
       }
-
-      return { x, y, rawVal, date: log.date };
+      if (hasVal) {
+        validPoints.push({ x, y, rawVal, date: log.date });
+      }
     });
+
+    return validPoints;
   };
 
   const points = getChartDataPoints();
   const polylinePoints = points.map(p => `${p.x},${p.y}`).join(' ');
 
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
       {/* Android Push Notification Banner overlay */}
       <div className={`android-notification-wrapper ${notification.show ? 'show' : ''}`}>
         <div className="android-notification-card">
@@ -946,48 +958,39 @@ export default function DashboardGrid({ onLogout }) {
         </div>
       </div>
 
-      {/* Dashboard Top Header Bar */}
-      <header className="dashboard-header">
-        <div className="user-badge">
-          <div className="avatar-circle">
+      {/* Top App Bar */}
+      <header className="dashboard-header" style={{ height: '56px', padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="avatar-circle" style={{ width: '32px', height: '32px', fontSize: '14px', border: '1px solid var(--border-color)' }}>
             {profile?.name ? profile.name.charAt(0).toUpperCase() : 'P'}
           </div>
-          <div style={{ textAlign: 'left' }}>
-            <h2 style={{ fontSize: '1.2rem', margin: 0 }}>{profile?.name || 'Patient'}</h2>
-            <span className="text-muted text-sm">{profile?.conditions || 'Chronic Conditions'}</span>
-          </div>
+          <span style={{ fontWeight: '700', fontSize: '0.95rem', color: 'var(--ink)' }}>
+            {activeTab === 'home' && 'Companion'}
+            {activeTab === 'logs' && 'Vitals Logs'}
+            {activeTab === 'meds' && 'Prescriptions'}
+            {activeTab === 'chat' && 'Clinical AI'}
+            {activeTab === 'profile' && 'Target Tuning'}
+          </span>
         </div>
 
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          {/* Connection Status Badge */}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <div 
             className="no-print"
             style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '6px', 
-              padding: '6px 12px', 
-              borderRadius: '20px', 
-              backgroundColor: isOffline ? 'rgba(245, 158, 11, 0.08)' : 'rgba(46, 125, 50, 0.08)',
-              border: `1px solid ${isOffline ? 'rgba(245, 158, 11, 0.2)' : 'rgba(46, 125, 50, 0.2)'}`,
-              fontSize: '0.8rem',
-              color: isOffline ? 'var(--color-warning)' : 'var(--color-success)',
-              fontWeight: '600'
+              width: '8px', 
+              height: '8px', 
+              borderRadius: '50%', 
+              backgroundColor: isOffline ? '#f59e0b' : '#2e7d32', 
+              display: 'inline-block' 
             }}
-            title={isOffline ? 'Offline Mode - entries will cache locally' : 'Connected to clinical cloud server'}
-          >
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isOffline ? '#f59e0b' : '#2e7d32', display: 'inline-block' }} />
-            {isOffline ? 'Offline' : 'Online'}
-            {offlineQueueCount > 0 && ` (${offlineQueueCount} queued)`}
-          </div>
-          
+            title={isOffline ? 'Offline Mode' : 'Connected to Clinical Cloud'}
+          />
           {offlineQueueCount > 0 && !isOffline && (
             <button 
               type="button"
               className="btn-primary animate-pulse no-print"
-              style={{ height: '32px', fontSize: '11px', padding: '0 8px' }}
+              style={{ height: '28px', fontSize: '10px', padding: '0 8px' }}
               onClick={async () => {
-                const { syncOfflineQueue } = await import('../utils/db.js');
                 const remaining = await syncOfflineQueue();
                 setOfflineQueueCount(remaining);
                 if (remaining === 0) await loadAllData();
@@ -996,392 +999,190 @@ export default function DashboardGrid({ onLogout }) {
               🔄 Sync
             </button>
           )}
-
-          <button className="btn-secondary no-print" onClick={handleExportCSV}>
-            📥 CSV
-          </button>
-          <button className="btn-secondary no-print" onClick={() => setIsReportModalOpen(true)}>
-            📄 Clinician Report
-          </button>
-          <button className="btn-secondary no-print" onClick={() => setIsPromptLabOpen(true)}>
-            💡 Prompt Lab
-          </button>
-          <button className="btn-danger no-print" onClick={onLogout}>
-            Clear Profile
+          {activeTab === 'home' && (
+            <>
+              <button className="btn-secondary no-print" style={{ height: '28px', fontSize: '11px', padding: '0 8px' }} onClick={handleExportCSV}>
+                📥 CSV
+              </button>
+              <button className="btn-secondary no-print" style={{ height: '28px', fontSize: '11px', padding: '0 8px' }} onClick={() => setIsReportModalOpen(true)}>
+                📄 Report
+              </button>
+            </>
+          )}
+          <button className="btn-danger no-print" style={{ height: '28px', fontSize: '11px', padding: '0 8px', backgroundColor: 'rgba(230, 0, 35, 0.08)', color: 'var(--primary)' }} onClick={onLogout}>
+            Exit
           </button>
         </div>
       </header>
 
-      {/* Pending Consent Link Requests Banner */}
-      {linkRequests.length > 0 && (
-        <div style={{ margin: '24px 32px 0 32px', backgroundColor: 'var(--color-warning-bg)', border: '1px solid rgba(126, 35, 139, 0.15)', borderRadius: 'var(--radius-md)', padding: '16px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-          <div style={{ textAlign: 'left' }}>
-            <strong style={{ color: 'var(--color-warning)', fontSize: '0.9rem', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px' }}>
-              🔔 Secure Connection Request Received
-            </strong>
-            <span style={{ fontSize: '0.85rem', color: 'var(--ink)' }}>
-              Physician <strong>{linkRequests[0].physician_email}</strong> is requesting secure access to view your chronic care logs and predictions.
-            </span>
-          </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button className="btn-primary" style={{ height: '32px', padding: '0 12px', fontSize: '12px' }} onClick={() => handleLinkRespond(linkRequests[0].physician_id, true)}>
-              Approve Access
-            </button>
-            <button className="btn-secondary" style={{ height: '32px', padding: '0 12px', fontSize: '12px', backgroundColor: 'rgba(0, 0, 0, 0.05)' }} onClick={() => handleLinkRespond(linkRequests[0].physician_id, false)}>
-              Reject
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Main Grid Workspace */}
-      <main className="dashboard-main">
-        {/* Left Side: Analytics & Logs */}
-        <div className="dashboard-left-panel">
-          
-          {/* Wellness Score & Streak Metrics */}
-          <div className="metrics-row">
-            <div className="glass-panel metric-card">
-              <span className="metric-label">Wellness Score</span>
-              <span className="metric-value">{wellnessScore}%</span>
-              <span className={`metric-status ${wellnessScore >= 80 ? 'success' : wellnessScore >= 60 ? 'warning' : 'danger'}`}>
-                {wellnessScore >= 80 ? 'Excellent Adherence' : wellnessScore >= 60 ? 'Moderate Risk' : 'High Risk Alert'}
+      {/* Main App Content View based on Active Tab */}
+      <div className="mobile-app-content">
+        
+        {/* Pending Consent Link Requests Banner */}
+        {linkRequests.length > 0 && (
+          <div style={{ backgroundColor: 'var(--color-warning-bg)', border: '1px solid rgba(126, 35, 139, 0.15)', borderRadius: 'var(--radius-md)', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px', textAlign: 'left' }}>
+            <div>
+              <strong style={{ color: 'var(--color-warning)', fontSize: '0.8rem', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                🔔 Clinic Connection Request
+              </strong>
+              <span style={{ fontSize: '0.8rem', color: 'var(--ink)' }}>
+                Dr. <strong>{linkRequests[0].physician_email}</strong> requests secure access to your clinical logs.
               </span>
             </div>
-
-            <div className="glass-panel metric-card">
-              <span className="metric-label">Logging Streak</span>
-              <span className="metric-value">{streakDays} Days</span>
-              <span className="metric-status success">Active Schedule</span>
-            </div>
-
-            <div className="glass-panel metric-card">
-              <span className="metric-label">Fasting Glucose</span>
-              <span className="metric-value">{latestGlucose}</span>
-              {lastLog && lastLog.glucose !== null && (
-                <span className={`metric-status ${lastLog.glucose >= (profile?.glucoseFastingTargetMin || 80) && lastLog.glucose <= (profile?.glucoseFastingTargetMax || 130) ? 'success' : 'danger'}`}>
-                  {lastLog.glucose >= (profile?.glucoseFastingTargetMin || 80) && lastLog.glucose <= (profile?.glucoseFastingTargetMax || 130) ? 'In Range' : 'Out of Target'}
-                </span>
-              )}
-            </div>
-
-            <div className="glass-panel metric-card">
-              <span className="metric-label">Blood Pressure</span>
-              <span className="metric-value">{latestBp}</span>
-              <span className="metric-status warning">{profile?.bpStage || 'Normal'}</span>
-            </div>
-          </div>
-
-          {/* Clinical Risk & Correlation Forecast Banners */}
-          <div className="glass-panel alert-banner-container">
-            <h3 className="heading-card">Clinical Forecast & Correlation Engine</h3>
-            
-            {/* Direct Warnings / Regressions */}
-            {analysis.alerts.length === 0 && analysis.correlations.length === 0 && (
-              <p className="text-secondary text-sm">
-                No active clinical risks, 48-hour critical forecasts, or symptom-metric correlations identified today.
-              </p>
-            )}
-
-            {analysis.alerts.map((alert, i) => {
-              const isCritical = alert.includes('CRITICAL') || alert.includes('🚨');
-              return (
-                <div key={`alert-${i}`} className={`alert-banner ${isCritical ? 'danger' : 'warning'}`}>
-                  <div>
-                    <div className="alert-banner-title">{isCritical ? '🚨 Critical Wellness Alert' : '⚠️ Trend Prediction'}</div>
-                    <div>{alert}</div>
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Pattern correlations */}
-            {analysis.correlations.map((cor, i) => (
-              <div key={`cor-${i}`} className="alert-banner" style={{ backgroundColor: 'var(--color-info-bg)', borderColor: 'rgba(59, 130, 246, 0.2)', color: 'var(--text-primary)' }}>
-                <div>
-                  <div className="alert-banner-title" style={{ color: 'var(--color-info)' }}>🔍 Clinical Correlation Mapping</div>
-                  <div>{cor}</div>
-                </div>
-              </div>
-            ))}
-
-            {analysis.insights.map((ins, i) => (
-              <div key={`ins-${i}`} style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', paddingLeft: '8px', borderLeft: '3px solid var(--primary)' }}>
-                {ins}
-              </div>
-            ))}
-          </div>
-
-          {/* Advanced SVG Line Chart Panel */}
-          <div className="glass-panel">
-            <div className="flex-between">
-              <h3 className="heading-card">Clinical Curves</h3>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button 
-                  className={`btn-secondary ${graphMode === 'glucose' ? 'active' : ''}`}
-                  onClick={() => setGraphMode('glucose')}
-                  style={{ padding: '6px 12px', fontSize: '0.85rem', borderColor: graphMode === 'glucose' ? 'var(--primary)' : '' }}
-                >
-                  Glucose
-                </button>
-                <button 
-                  className={`btn-secondary ${graphMode === 'bp' ? 'active' : ''}`}
-                  onClick={() => setGraphMode('bp')}
-                  style={{ padding: '6px 12px', fontSize: '0.85rem', borderColor: graphMode === 'bp' ? 'var(--primary)' : '' }}
-                >
-                  Systolic BP
-                </button>
-              </div>
-            </div>
-
-            <div className="chart-svg-container">
-              {logs.length < 2 ? (
-                <div className="flex-center" style={{ height: '100%', color: 'var(--text-muted)' }}>
-                  Log at least 2 days of biometrics to plot trends.
-                </div>
-              ) : (
-                <svg width="100%" height="100%" viewBox="0 0 500 200" style={{ overflow: 'visible' }}>
-                  {/* Grid Lines */}
-                  <line x1="50" y1="20" x2="450" y2="20" stroke="var(--border-light)" strokeDasharray="3" />
-                  <line x1="50" y1="100" x2="450" y2="100" stroke="var(--border-light)" strokeDasharray="3" />
-                  <line x1="50" y1="180" x2="450" y2="180" stroke="var(--border-color)" />
-
-                  {/* Graph Target Bounds */}
-                  {graphMode === 'glucose' ? (
-                    <>
-                      {/* Hyper Bound line (130 max) */}
-                      <line x1="50" y1={180 - ((130 - 40) / 180) * 160} x2="450" y2={180 - ((130 - 40) / 180) * 160} stroke="rgba(245, 158, 11, 0.4)" strokeDasharray="4 2" />
-                      {/* Hypo Bound line (70 min) */}
-                      <line x1="50" y1={180 - ((70 - 40) / 180) * 160} x2="450" y2={180 - ((70 - 40) / 180) * 160} stroke="rgba(239, 68, 68, 0.4)" strokeDasharray="4 2" />
-                    </>
-                  ) : (
-                    /* Systolic target line (130 max) */
-                    <line x1="50" y1={180 - ((130 - 80) / 100) * 160} x2="450" y2={180 - ((130 - 80) / 100) * 160} stroke="rgba(245, 158, 11, 0.4)" strokeDasharray="4 2" />
-                  )}
-
-                  {/* Trend Line */}
-                  <polyline
-                    fill="none"
-                    stroke="var(--primary)"
-                    strokeWidth="3"
-                    points={polylinePoints}
-                  />
-
-                  {/* Data Point Circles and Values */}
-                  {points.map((p, idx) => (
-                    <g key={`pt-${idx}`}>
-                      <circle cx={p.x} cy={p.y} r="5" fill="var(--bg-app)" stroke="var(--primary)" strokeWidth="3" />
-                      <text x={p.x} y={p.y - 12} textAnchor="middle" fill="var(--text-primary)" fontSize="10" fontWeight="bold">
-                        {p.rawVal}
-                      </text>
-                      <text x={p.x} y="195" textAnchor="middle" fill="var(--text-muted)" fontSize="9">
-                        {p.date}
-                      </text>
-                    </g>
-                  ))}
-                </svg>
-              )}
-            </div>
-          </div>
-
-          {/* Quick Check-in Logger */}
-          <div className="glass-panel">
-            <div className="flex-between" style={{ marginBottom: '16px' }}>
-              <h3 className="heading-card">Quick Biometric Entry</h3>
-              <button 
-                type="button" 
-                className="btn-secondary" 
-                style={{ height: '32px', padding: '0 12px', fontSize: '12px', backgroundColor: 'var(--secondary-bg)' }}
-                onClick={() => setIsBtModalOpen(true)}
-              >
-                🔌 Sync Device
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="btn-primary" style={{ height: '28px', padding: '0 10px', fontSize: '11px' }} onClick={() => handleLinkRespond(linkRequests[0].physician_id, true)}>
+                Approve
+              </button>
+              <button className="btn-secondary" style={{ height: '28px', padding: '0 10px', fontSize: '11px', backgroundColor: 'rgba(0,0,0,0.05)' }} onClick={() => handleLinkRespond(linkRequests[0].physician_id, false)}>
+                Decline
               </button>
             </div>
-            <form onSubmit={handleQuickLog} className="quick-logger-form" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {profile?.conditions?.toLowerCase().includes('diabetes') && (
-                <div className="grid-2">
-                  <div>
-                    <label className="input-label" htmlFor="quick-glucose">Glucose (mg/dL)</label>
-                    <input 
-                      id="quick-glucose"
-                      type="number" 
-                      className="input-field" 
-                      placeholder="e.g. 115"
-                      value={logGlucose}
-                      onChange={e => setLogGlucose(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="quick-meal" className="input-label">Breakfast:</label>
-                    <select 
-                      id="quick-meal"
-                      className="input-field" 
-                      value={logMeal}
-                      onChange={e => setLogMeal(e.target.value)}
-                    >
-                      <option value="yes">Consumed</option>
-                      <option value="skipped">Skipped</option>
-                    </select>
-                  </div>
-                </div>
-              )}
-
-              {(profile?.conditions?.toLowerCase().includes('hypertension') || profile?.conditions?.toLowerCase().includes('anxiety')) && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  <div>
-                    <label className="input-label" htmlFor="quick-sys">Systolic BP (mmHg)</label>
-                    <input 
-                      id="quick-sys"
-                      type="number" 
-                      className="input-field" 
-                      placeholder="120"
-                      value={logBpSys}
-                      onChange={e => setLogBpSys(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="input-label" htmlFor="quick-dia">Diastolic BP (mmHg)</label>
-                    <input 
-                      id="quick-dia"
-                      type="number" 
-                      className="input-field" 
-                      placeholder="80"
-                      value={logBpDia}
-                      onChange={e => setLogBpDia(e.target.value)}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {profile?.conditions?.toLowerCase().includes('anxiety') && (
-                <div className="grid-2">
-                  <div>
-                    <label className="input-label" htmlFor="quick-anxiety">Anxiety level (GAD-7 0–21)</label>
-                    <input 
-                      id="quick-anxiety"
-                      type="range" 
-                      min="0"
-                      max="21"
-                      className="input-field" 
-                      value={logAnxiety}
-                      onChange={e => setLogAnxiety(Number(e.target.value))}
-                    />
-                    <div style={{ fontSize: '0.75rem', textAlign: 'right', fontWeight: 'bold', color: 'var(--primary)' }}>
-                      Score: {logAnxiety}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="input-label" htmlFor="quick-hr">Heart Rate (bpm)</label>
-                    <input 
-                      id="quick-hr"
-                      type="number" 
-                      className="input-field" 
-                      placeholder="e.g. 72"
-                      value={logHeartRate}
-                      onChange={e => setLogHeartRate(e.target.value)}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {profile?.conditions?.toLowerCase().includes('asthma') && (
-                <div className="grid-2">
-                  <div>
-                    <label className="input-label" htmlFor="quick-pf">Peak Flow (L/min)</label>
-                    <input 
-                      id="quick-pf"
-                      type="number" 
-                      className="input-field" 
-                      placeholder="e.g. 500"
-                      value={logPeakFlow}
-                      onChange={e => setLogPeakFlow(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="input-label" htmlFor="quick-puffs">Rescue Inhaler Puffs</label>
-                    <input 
-                      id="quick-puffs"
-                      type="number" 
-                      className="input-field" 
-                      placeholder="e.g. 0"
-                      value={logInhalerPuffs}
-                      onChange={e => setLogInhalerPuffs(e.target.value)}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {profile?.conditions?.toLowerCase().includes('pain') && (
-                <div>
-                  <label className="input-label" htmlFor="quick-pain">Pain Intensity (NRS 0–10)</label>
-                  <input 
-                    id="quick-pain"
-                    type="range" 
-                    min="0"
-                    max="10"
-                    className="input-field" 
-                    value={logPain}
-                    onChange={e => setLogPain(Number(e.target.value))}
-                  />
-                  <div style={{ fontSize: '0.75rem', textAlign: 'right', fontWeight: 'bold', color: 'var(--primary)' }}>
-                    Pain: {logPain}/10
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="input-label" htmlFor="quick-symptoms">Symptoms Logged</label>
-                <input 
-                  id="quick-symptoms"
-                  type="text" 
-                  className="input-field" 
-                  placeholder="Headache, dizzy, none..."
-                  value={logSymptoms}
-                  onChange={e => setLogSymptoms(e.target.value)}
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
-                <button type="submit" className="btn-primary">
-                  Log Entry
-                </button>
-              </div>
-            </form>
           </div>
+        )}
 
-          {/* Chronic Disease Educational & Reference Guide */}
-          <div className="glass-panel">
-            <h3 className="heading-card" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>📚 Chronic Disease Reference Guide</h3>
-            <p className="text-secondary text-sm" style={{ marginBottom: '16px' }}>
-              Evidence-based clinical guidelines and targets for your active conditions:
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {profile?.conditions?.toLowerCase().includes('diabetes') && (
-                <div style={{ borderLeft: '3px solid var(--primary)', paddingLeft: '12px', fontSize: '0.85rem' }}>
-                  <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>Diabetes (Glycemic Management)</strong>
-                  <span className="text-muted" style={{ display: 'block', fontSize: '0.8rem', lineHeight: '1.4' }}>
-                    Standard targets: Fasting glucose 80–130 mg/dL, postprandial glucose &lt; 180 mg/dL. Values below 70 mg/dL indicate hypoglycemia, which requires immediate fast-acting carbs (15g).
+        {/* Tab 1: Home Dashboard */}
+        {activeTab === 'home' && (
+          <>
+            {/* Quick Metrics */}
+            <div className="metrics-row" style={{ gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div className="glass-panel metric-card" style={{ padding: '12px' }}>
+                <span className="metric-label" style={{ fontSize: '10px' }}>Wellness Score</span>
+                <span className="metric-value" style={{ fontSize: '20px' }}>{wellnessScore}%</span>
+                <span className={`metric-status ${wellnessScore >= 80 ? 'success' : wellnessScore >= 60 ? 'warning' : 'danger'}`} style={{ fontSize: '10px', padding: '2px 6px' }}>
+                  {wellnessScore >= 80 ? 'Controlled' : wellnessScore >= 60 ? 'Moderate' : 'High Risk'}
+                </span>
+              </div>
+
+              <div className="glass-panel metric-card" style={{ padding: '12px' }}>
+                <span className="metric-label" style={{ fontSize: '10px' }}>Logging Streak</span>
+                <span className="metric-value" style={{ fontSize: '20px' }}>{streakDays} Days</span>
+                <span className="metric-status success" style={{ fontSize: '10px', padding: '2px 6px' }}>Active</span>
+              </div>
+            </div>
+
+            <div className="metrics-row" style={{ gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div className="glass-panel metric-card" style={{ padding: '12px' }}>
+                <span className="metric-label" style={{ fontSize: '10px' }}>Glucose</span>
+                <span className="metric-value" style={{ fontSize: '18px' }}>{latestGlucose.split(' ')[0]} <span style={{ fontSize: '11px' }}>mg/dL</span></span>
+                {lastLog && lastLog.glucose !== null && (
+                  <span className={`metric-status ${lastLog.glucose >= (profile?.glucoseFastingTargetMin || 80) && lastLog.glucose <= (profile?.glucoseFastingTargetMax || 130) ? 'success' : 'danger'}`} style={{ fontSize: '10px', padding: '2px 6px' }}>
+                    {lastLog.glucose >= (profile?.glucoseFastingTargetMin || 80) && lastLog.glucose <= (profile?.glucoseFastingTargetMax || 130) ? 'In Range' : 'Out Target'}
                   </span>
-                </div>
+                )}
+              </div>
+
+              <div className="glass-panel metric-card" style={{ padding: '12px' }}>
+                <span className="metric-label" style={{ fontSize: '10px' }}>Blood Pressure</span>
+                <span className="metric-value" style={{ fontSize: '18px' }}>{latestBp.split(' ')[0]} <span style={{ fontSize: '11px' }}>mmHg</span></span>
+                <span className="metric-status warning" style={{ fontSize: '10px', padding: '2px 6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>{profile?.bpStage || 'Normal'}</span>
+              </div>
+            </div>
+
+            {/* Clinical Alerts and Predictions */}
+            <div className="glass-panel alert-banner-container" style={{ padding: '16px' }}>
+              <h3 className="heading-card" style={{ fontSize: '15px' }}>Clinical Risk & Alerts</h3>
+              
+              {analysis.alerts.length === 0 && analysis.correlations.length === 0 && (
+                <p className="text-secondary text-xs" style={{ margin: 0 }}>
+                  No immediate clinical risk alerts or abnormal biometric trends forecast for the next 48 hours.
+                </p>
               )}
-              {profile?.conditions?.toLowerCase().includes('hypertension') && (
-                <div style={{ borderLeft: '3px solid var(--primary)', paddingLeft: '12px', fontSize: '0.85rem' }}>
-                  <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>Hypertension (Blood Pressure)</strong>
-                  <span className="text-muted" style={{ display: 'block', fontSize: '0.8rem', lineHeight: '1.4' }}>
-                    Target pressure: &lt; 130/80 mmHg. A systolic level &gt;= 140 mmHg or diastolic level &gt;= 90 mmHg represents Stage 2 Hypertension. Reduce sodium intake and re-test after rest.
-                  </span>
+
+              {analysis.alerts.map((alert, i) => {
+                const isCritical = alert.includes('CRITICAL') || alert.includes('🚨');
+                return (
+                  <div key={`alert-${i}`} className={`alert-banner ${isCritical ? 'danger' : 'warning'}`} style={{ padding: '8px 12px', fontSize: '12px' }}>
+                    <div className="alert-banner-title" style={{ fontSize: '13px' }}>{isCritical ? '🚨 Critical Alert' : '⚠️ Warning'}</div>
+                    <div>{alert}</div>
+                  </div>
+                );
+              })}
+
+              {analysis.correlations.map((cor, i) => (
+                <div key={`cor-${i}`} className="alert-banner" style={{ backgroundColor: 'var(--color-info-bg)', borderColor: 'rgba(59, 130, 246, 0.2)', color: 'var(--text-primary)', padding: '8px 12px', fontSize: '12px' }}>
+                  <div className="alert-banner-title" style={{ color: 'var(--color-info)', fontSize: '13px' }}>🔍 Correlation Pattern</div>
+                  <div>{cor}</div>
                 </div>
-              )}
-              {profile?.conditions?.toLowerCase().includes('anxiety') && (
-                <div style={{ borderLeft: '3px solid var(--primary)', paddingLeft: '12px', fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <strong style={{ color: 'var(--text-primary)', display: 'block' }}>Anxiety (GAD-7 Clinical Scale)</strong>
-                  <span className="text-muted" style={{ display: 'block', fontSize: '0.8rem', lineHeight: '1.4' }}>
-                    Scores of 0-4 represent minimal anxiety, 5-9 mild, 10-14 moderate, and 15-21 severe. Deep breathing (e.g. 4-4-6 paced counts) stimulates the vagus nerve and helps lower heart rate.
-                  </span>
+              ))}
+
+              {analysis.insights.map((ins, i) => (
+                <div key={`ins-${i}`} style={{ fontSize: '12px', color: 'var(--text-secondary)', paddingLeft: '8px', borderLeft: '3px solid var(--primary)', margin: '4px 0' }}>
+                  {ins}
+                </div>
+              ))}
+            </div>
+
+            {/* SVG curves */}
+            <div className="glass-panel" style={{ padding: '16px' }}>
+              <div className="flex-between" style={{ marginBottom: '12px' }}>
+                <h3 className="heading-card" style={{ fontSize: '15px', margin: 0 }}>Clinical Curves</h3>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button 
+                    className={`btn-secondary ${graphMode === 'glucose' ? 'active' : ''}`}
+                    onClick={() => setGraphMode('glucose')}
+                    style={{ padding: '4px 8px', fontSize: '11px', height: '24px', borderRadius: '12px', borderColor: graphMode === 'glucose' ? 'var(--primary)' : '' }}
+                  >
+                    Sugar
+                  </button>
+                  <button 
+                    className={`btn-secondary ${graphMode === 'bp' ? 'active' : ''}`}
+                    onClick={() => setGraphMode('bp')}
+                    style={{ padding: '4px 8px', fontSize: '11px', height: '24px', borderRadius: '12px', borderColor: graphMode === 'bp' ? 'var(--primary)' : '' }}
+                  >
+                    BP
+                  </button>
+                </div>
+              </div>
+
+              <div className="chart-svg-container" style={{ padding: '16px 8px 4px 8px', height: '160px' }}>
+                {points.length < 2 ? (
+                  <div className="flex-center" style={{ height: '100%', color: 'var(--text-muted)', fontSize: '11px' }}>
+                    Need at least 2 logs containing this metric to plot trends.
+                  </div>
+                ) : (
+                  <svg width="100%" height="100%" viewBox="0 0 500 200" style={{ overflow: 'visible' }}>
+                    <line x1="50" y1="20" x2="450" y2="20" stroke="var(--border-light)" strokeDasharray="3" />
+                    <line x1="50" y1="100" x2="450" y2="100" stroke="var(--border-light)" strokeDasharray="3" />
+                    <line x1="50" y1="180" x2="450" y2="180" stroke="var(--border-color)" />
+
+                    {graphMode === 'glucose' ? (
+                      <>
+                        <line x1="50" y1={180 - ((130 - 40) / 180) * 160} x2="450" y2={180 - ((130 - 40) / 180) * 160} stroke="rgba(245, 158, 11, 0.4)" strokeDasharray="4 2" />
+                        <line x1="50" y1={180 - ((70 - 40) / 180) * 160} x2="450" y2={180 - ((70 - 40) / 180) * 160} stroke="rgba(239, 68, 68, 0.4)" strokeDasharray="4 2" />
+                      </>
+                    ) : (
+                      <line x1="50" y1={180 - ((130 - 80) / 100) * 160} x2="450" y2={180 - ((130 - 80) / 100) * 160} stroke="rgba(245, 158, 11, 0.4)" strokeDasharray="4 2" />
+                    )}
+
+                    <polyline fill="none" stroke="var(--primary)" strokeWidth="3" points={polylinePoints} />
+
+                    {points.map((p, idx) => (
+                      <g key={`pt-${idx}`}>
+                        <circle cx={p.x} cy={p.y} r="4" fill="var(--bg-app)" stroke="var(--primary)" strokeWidth="2.5" />
+                        <text x={p.x} y={p.y - 10} textAnchor="middle" fill="var(--text-primary)" fontSize="9" fontWeight="bold">
+                          {p.rawVal}
+                        </text>
+                        <text x={p.x} y="195" textAnchor="middle" fill="var(--text-muted)" fontSize="8">
+                          {p.date}
+                        </text>
+                      </g>
+                    ))}
+                  </svg>
+                )}
+              </div>
+            </div>
+
+            {/* Disease reference & breathing coach */}
+            <div className="glass-panel" style={{ padding: '16px' }}>
+              <h3 className="heading-card" style={{ fontSize: '15px', marginBottom: '8px' }}>📚 Care Guide & Pacer</h3>
+              <p className="text-secondary text-xs" style={{ marginBottom: '12px' }}>Guidelines and breathing tools configured for your conditions.</p>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {profile?.conditions?.toLowerCase().includes('anxiety') && (
                   <button 
                     type="button" 
                     className="btn-secondary no-print" 
-                    style={{ width: 'fit-content', fontSize: '0.8rem', padding: '4px 10px', height: '28px', alignSelf: 'flex-start', marginTop: '4px' }}
+                    style={{ width: '100%', fontSize: '0.85rem', padding: '8px 12px', height: '36px', justifyContent: 'center' }}
                     onClick={() => {
                       setIsBreathingModalOpen(true);
                       setBreathingPhase('idle');
@@ -1389,135 +1190,124 @@ export default function DashboardGrid({ onLogout }) {
                       setBreathingCycles(0);
                     }}
                   >
-                    🧘 Start Paced Breathing Coach
+                    🧘 Start Vagus Nerve Breathing Pacer
                   </button>
+                )}
+                
+                <div style={{ fontSize: '11px', color: 'var(--mute)', display: 'flex', flexDirection: 'column', gap: '8px', textAlign: 'left' }}>
+                  {profile?.conditions?.toLowerCase().includes('diabetes') && (
+                    <div>💡 <strong>Diabetes target</strong>: Fasting 80-130 mg/dL. Carry glucose tablets for lows (&lt;70 mg/dL).</div>
+                  )}
+                  {profile?.conditions?.toLowerCase().includes('hypertension') && (
+                    <div>💡 <strong>BP target</strong>: Under 130/80 mmHg. Stage 2 is &gt;=140/90. Rest and re-test if high.</div>
+                  )}
+                  {profile?.conditions?.toLowerCase().includes('asthma') && (
+                    <div>💡 <strong>Asthma target</strong>: PEF &gt; 400 L/min. Use rescue inhaler if Peak Flow drops &lt; 350 L/min.</div>
+                  )}
                 </div>
-              )}
-              {profile?.conditions?.toLowerCase().includes('asthma') && (
-                <div style={{ borderLeft: '3px solid var(--primary)', paddingLeft: '12px', fontSize: '0.85rem' }}>
-                  <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>Asthma (Airway Telemetry)</strong>
-                  <span className="text-muted" style={{ display: 'block', fontSize: '0.8rem', lineHeight: '1.4' }}>
-                    Monitor Peak Flow (PEF, L/min) and rescue puffs. Keep Peak Flow &gt; 400 L/min. A level &lt; 350 L/min indicates airway constriction; administer rescue inhaler immediately.
-                  </span>
-                </div>
-              )}
-              {profile?.conditions?.toLowerCase().includes('pain') && (
-                <div style={{ borderLeft: '3px solid var(--primary)', paddingLeft: '12px', fontSize: '0.85rem' }}>
-                  <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>Chronic Pain (NRS Intensity Scale)</strong>
-                  <span className="text-muted" style={{ display: 'block', fontSize: '0.8rem', lineHeight: '1.4' }}>
-                    Logged on a 0-10 scale. Implement paced activity plans, thermal therapy, and mindfulness to manage flare-ups. Severe levels (&gt;= 7/10) require medication and clinic notifications.
-                  </span>
-                </div>
-              )}
+              </div>
             </div>
-          </div>
+          </>
+        )}
 
-          {/* Historical Logs List */}
-          <div className="glass-panel">
-            <h3 className="heading-card">Timeline Logs</h3>
-            <div className="timeline-list">
-              {logs.slice().reverse().map((log, idx) => {
-                const isOutOfRange = (log.glucose && (log.glucose < (profile?.glucoseFastingTargetMin || 80) || log.glucose > (profile?.glucoseFastingTargetMax || 130))) || 
-                                     (log.bp && (parseInt(log.bp.split('/')[0]) > (profile?.bpSystolicTargetMax || 130)));
-                return (
-                  <div className={`timeline-node ${!isOutOfRange ? 'active' : ''}`} key={`log-${idx}`}>
-                    <div className="timeline-card">
-                      <div>
-                        <strong style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>{log.date}</strong>
-                        <div className="text-muted text-sm">{log.meal === 'skipped' ? '⚠️ Skipped Breakfast' : log.meal === 'yes' ? 'Breakfast Consumed' : 'N/A'}</div>
+        {/* Tab 2: Timeline Logs */}
+        {activeTab === 'logs' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <h3 className="heading-card" style={{ fontSize: '16px', margin: 0 }}>Timeline Logs</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {logs.length === 0 ? (
+                <div className="glass-panel flex-center" style={{ padding: '40px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                  No vital logs recorded yet. Tap the floating + button to enter your first log.
+                </div>
+              ) : (
+                logs.slice().reverse().map((log, idx) => {
+                  const isOutOfRange = (log.glucose && (log.glucose < (profile?.glucoseFastingTargetMin || 80) || log.glucose > (profile?.glucoseFastingTargetMax || 130))) || 
+                                       (log.bp && (parseInt(log.bp.split('/')[0]) > (profile?.bpSystolicTargetMax || 130)));
+                  return (
+                    <div className="glass-panel" key={`log-${idx}`} style={{ padding: '12px 16px', borderLeft: `4px solid ${isOutOfRange ? 'var(--color-danger)' : 'var(--color-success)'}` }}>
+                      <div className="flex-between" style={{ borderBottom: '1px solid var(--hairline-soft)', paddingBottom: '6px', marginBottom: '8px' }}>
+                        <strong style={{ fontSize: '0.95rem', color: 'var(--text-primary)' }}>{log.date}</strong>
+                        <span className="text-xs text-muted" style={{ fontWeight: '600' }}>
+                          {log.meal === 'skipped' ? '⚠️ Skipped Breakfast' : log.meal === 'yes' ? 'Breakfast Consumed' : 'N/A'}
+                        </span>
                       </div>
-                      
-                      <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginTop: '8px' }}>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', fontSize: '12px' }}>
                         {log.glucose !== null && log.glucose !== undefined && (
                           <div>
-                            <span className="text-muted text-xs">Glucose:</span>
-                            <div style={{ fontWeight: '600', fontSize: '0.85rem', color: (log.glucose < 70 || log.glucose > 130) ? 'var(--color-danger)' : 'var(--text-primary)' }}>{log.glucose} mg/dL</div>
+                            <span className="text-muted">Sugar:</span> <strong>{log.glucose} mg/dL</strong>
                           </div>
                         )}
                         {log.bp && (
                           <div>
-                            <span className="text-muted text-xs">BP:</span>
-                            <div style={{ fontWeight: '600', fontSize: '0.85rem', color: (parseInt(log.bp.split('/')[0]) >= 140) ? 'var(--color-danger)' : 'var(--text-primary)' }}>{log.bp} mmHg</div>
+                            <span className="text-muted">BP:</span> <strong>{log.bp} mmHg</strong>
                           </div>
                         )}
                         {log.anxietyLevel !== null && log.anxietyLevel !== undefined && (
                           <div>
-                            <span className="text-muted text-xs">Anxiety (GAD-7):</span>
-                            <div style={{ fontWeight: '600', fontSize: '0.85rem', color: log.anxietyLevel >= 15 ? 'var(--color-danger)' : log.anxietyLevel >= 10 ? 'var(--color-warning)' : 'var(--text-primary)' }}>{log.anxietyLevel}/21</div>
+                            <span className="text-muted">Anxiety:</span> <strong>{log.anxietyLevel}/21</strong>
                           </div>
                         )}
                         {log.heartRate !== null && log.heartRate !== undefined && (
                           <div>
-                            <span className="text-muted text-xs">Heart Rate:</span>
-                            <div style={{ fontWeight: '600', fontSize: '0.85rem', color: (log.heartRate > 100 || log.heartRate < 50) ? 'var(--color-danger)' : 'var(--text-primary)' }}>{log.heartRate} bpm</div>
+                            <span className="text-muted">HR:</span> <strong>{log.heartRate} bpm</strong>
                           </div>
                         )}
                         {log.peakFlow !== null && log.peakFlow !== undefined && (
                           <div>
-                            <span className="text-muted text-xs">Peak Flow:</span>
-                            <div style={{ fontWeight: '600', fontSize: '0.85rem', color: log.peakFlow < 350 ? 'var(--color-danger)' : 'var(--text-primary)' }}>{log.peakFlow} L/min</div>
-                          </div>
-                        )}
-                        {log.inhalerPuffs !== null && log.inhalerPuffs !== undefined && (
-                          <div>
-                            <span className="text-muted text-xs">Inhaler Puffs:</span>
-                            <div style={{ fontWeight: '600', fontSize: '0.85rem', color: log.inhalerPuffs > 2 ? 'var(--color-warning)' : 'var(--text-primary)' }}>{log.inhalerPuffs} puffs</div>
+                            <span className="text-muted">Peak Flow:</span> <strong>{log.peakFlow} L/m</strong>
                           </div>
                         )}
                         {log.painLevel !== null && log.painLevel !== undefined && (
                           <div>
-                            <span className="text-muted text-xs">Pain Level:</span>
-                            <div style={{ fontWeight: '600', fontSize: '0.85rem', color: log.painLevel >= 7 ? 'var(--color-danger)' : 'var(--text-primary)' }}>{log.painLevel}/10</div>
+                            <span className="text-muted">Pain:</span> <strong>{log.painLevel}/10</strong>
                           </div>
                         )}
                       </div>
 
-                      <div style={{ textAlign: 'right', marginTop: '8px' }}>
-                        <span className="text-muted text-xs">Symptoms:</span>
-                        <div className="badge badge-secondary" style={{ display: 'block', width: 'fit-content', marginLeft: 'auto', marginTop: '2px' }}>
-                          {log.symptoms}
+                      {log.symptoms && log.symptoms !== 'None' && (
+                        <div style={{ marginTop: '8px', fontSize: '11px', display: 'flex', gap: '4px', alignItems: 'center' }}>
+                          <span className="text-muted">Symptoms:</span>
+                          <span className="badge badge-secondary" style={{ padding: '2px 6px', fontSize: '10px' }}>{log.symptoms}</span>
                         </div>
-                      </div>
+                      )}
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Right Side: Profile & Chatbot */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-          
-          {/* Prescription Compliance Manager */}
-          <div className="glass-panel">
-            <div className="flex-between" style={{ marginBottom: '8px' }}>
-              <h3 className="heading-card" style={{ margin: 0 }}>Active Prescriptions</h3>
+        {/* Tab 3: Prescriptions */}
+        {activeTab === 'meds' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div className="flex-between">
+              <h3 className="heading-card" style={{ fontSize: '16px', margin: 0 }}>Active Prescriptions</h3>
               <button 
                 type="button" 
                 className="btn-secondary no-print" 
-                style={{ height: '28px', padding: '0 10px', fontSize: '11px', backgroundColor: 'var(--secondary-bg)' }}
+                style={{ height: '28px', padding: '0 8px', fontSize: '11px', backgroundColor: 'var(--secondary-bg)' }}
                 onClick={() => setIsAddingMed(!isAddingMed)}
               >
                 {isAddingMed ? 'Cancel' : '+ Add Drug'}
               </button>
             </div>
-            <p className="text-secondary text-sm" style={{ marginBottom: '12px' }}>Toggle to log daily medication ingestion compliance.</p>
-            
+
             {isAddingMed && (
-              <form onSubmit={handleAddMed} style={{ backgroundColor: 'var(--secondary-bg)', padding: '12px', borderRadius: '12px', marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '8px', border: '1px solid var(--border-color)', textAlign: 'left' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px' }}>
-                  <div>
-                    <label className="input-label" style={{ fontSize: '0.75rem' }}>Drug Name</label>
-                    <input 
-                      type="text" 
-                      className="input-field" 
-                      placeholder="e.g. Metformin" 
-                      value={newMedName} 
-                      onChange={e => setNewMedName(e.target.value)} 
-                      required 
-                    />
-                  </div>
+              <form onSubmit={handleAddMed} style={{ backgroundColor: 'var(--surface-card)', padding: '16px', borderRadius: '16px', display: 'flex', flexDirection: 'column', gap: '12px', border: '1px solid var(--border-color)', textAlign: 'left' }}>
+                <div>
+                  <label className="input-label" style={{ fontSize: '0.75rem' }}>Medication Name</label>
+                  <input 
+                    type="text" 
+                    className="input-field" 
+                    placeholder="e.g. Metformin" 
+                    value={newMedName} 
+                    onChange={e => setNewMedName(e.target.value)} 
+                    required 
+                  />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
                     <label className="input-label" style={{ fontSize: '0.75rem' }}>Dose</label>
                     <input 
@@ -1529,53 +1319,48 @@ export default function DashboardGrid({ onLogout }) {
                       required 
                     />
                   </div>
+                  <div>
+                    <label className="input-label" style={{ fontSize: '0.75rem' }}>Frequency</label>
+                    <select 
+                      className="input-field" 
+                      value={newMedFreq} 
+                      onChange={e => setNewMedFreq(e.target.value)}
+                      style={{ background: 'var(--canvas)' }}
+                    >
+                      <option value="Once daily">Once daily</option>
+                      <option value="Twice daily">Twice daily</option>
+                      <option value="As needed (PRN)">As needed</option>
+                    </select>
+                  </div>
                 </div>
-                <div>
-                  <label className="input-label" style={{ fontSize: '0.75rem' }}>Frequency</label>
-                  <select 
-                    className="input-field" 
-                    value={newMedFreq} 
-                    onChange={e => setNewMedFreq(e.target.value)}
-                    style={{ background: 'var(--surface-card)' }}
-                  >
-                    <option value="Once daily">Once daily</option>
-                    <option value="Twice daily">Twice daily</option>
-                    <option value="Three times daily">Three times daily</option>
-                    <option value="Four times daily">Four times daily</option>
-                    <option value="As needed (PRN)">As needed (PRN)</option>
-                  </select>
-                </div>
-                <button type="submit" className="btn-primary" style={{ justifyContent: 'center', fontSize: '0.8rem', padding: '6px' }}>
+                <button type="submit" className="btn-primary" style={{ width: '100%', justifyContent: 'center', height: '36px' }}>
                   Save Prescription
                 </button>
               </form>
             )}
 
-            <div className="meds-grid" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {meds.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                  No active prescriptions logged. Click + Add Drug to track compliance.
+                <div className="glass-panel flex-center" style={{ padding: '32px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                  No active prescriptions logged. Tap + Add Drug to build your compliance list.
                 </div>
               ) : (
                 meds.map(med => (
-                  <div className={`med-item ${med.taken ? 'taken' : ''}`} key={med.id} onClick={() => handleToggleMed(med.id)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', border: '1px solid var(--border-light)', borderRadius: '12px', cursor: 'pointer', transition: 'all 0.2s ease', backgroundColor: med.taken ? 'rgba(46, 125, 50, 0.05)' : 'var(--surface-card)' }}>
-                    <div className="med-item-info" style={{ display: 'flex', flexDirection: 'column', gap: '2px', textAlign: 'left' }}>
-                      <strong style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>{med.name} {med.dose}</strong>
-                      <span className="text-muted text-xs">{med.frequency}</span>
+                  <div className={`med-item ${med.taken ? 'taken' : ''}`} key={med.id} onClick={() => handleToggleMed(med.id)} style={{ padding: '12px', borderRadius: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', transition: 'all 0.2s', backgroundColor: med.taken ? 'rgba(46, 125, 50, 0.05)' : 'var(--canvas)', border: '1px solid var(--hairline-soft)' }}>
+                    <div className="med-item-info" style={{ textAlign: 'left' }}>
+                      <strong style={{ fontSize: '0.95rem' }}>{med.name} {med.dose}</strong>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--mute)', marginTop: '2px' }}>{med.frequency}</div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <button 
                         type="button" 
                         className="no-print"
                         onClick={(e) => handleDeleteMed(e, med.id, med.name)} 
-                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px', fontSize: '1rem', transition: 'color 0.2s' }}
-                        onMouseEnter={(e) => e.target.style.color = 'var(--primary)'}
-                        onMouseLeave={(e) => e.target.style.color = 'var(--text-muted)'}
-                        title="Delete Prescription"
+                        style={{ background: 'none', border: 'none', color: 'var(--stone)', cursor: 'pointer', padding: '6px', fontSize: '0.95rem' }}
                       >
                         🗑️
                       </button>
-                      <div className={`checkbox-custom ${med.taken ? 'checked' : ''}`} style={{ width: '20px', height: '20px', borderRadius: '6px', border: '2px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 'bold', color: 'white', backgroundColor: med.taken ? 'var(--color-success)' : 'transparent', borderColor: med.taken ? 'var(--color-success)' : 'var(--border-color)' }}>
+                      <div className={`checkbox-custom ${med.taken ? 'checked' : ''}`} style={{ width: '20px', height: '20px', borderRadius: '5px' }}>
                         {med.taken && '✓'}
                       </div>
                     </div>
@@ -1584,139 +1369,39 @@ export default function DashboardGrid({ onLogout }) {
               )}
             </div>
           </div>
+        )}
 
-          {/* Clinical Targets & Thresholds */}
-          <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <h3 className="heading-card">Clinical Target Thresholds</h3>
-            {!isTuningOpen ? (
-              <>
-                <div className="meds-grid" style={{ gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  <div style={{ padding: '8px', border: '1px solid var(--border-light)', borderRadius: '8px' }}>
-                    <span className="text-muted text-xs" style={{ display: 'block' }}>Fasting Glucose</span>
-                    <strong style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>
-                      {profile?.glucoseFastingTargetMin} - {profile?.glucoseFastingTargetMax} mg/dL
-                    </strong>
-                  </div>
-                  <div style={{ padding: '8px', border: '1px solid var(--border-light)', borderRadius: '8px' }}>
-                    <span className="text-muted text-xs" style={{ display: 'block' }}>Max Blood Pressure</span>
-                    <strong style={{ color: 'var(--text-primary)', fontSize: '0.9rem' }}>
-                      {profile?.bpSystolicTargetMax}/{profile?.bpDiastolicTargetMax} mmHg
-                    </strong>
-                  </div>
-                </div>
-                <button className="btn-secondary" onClick={() => setIsTuningOpen(true)} style={{ justifyContent: 'center', fontSize: '0.85rem' }}>
-                  ⚙️ Tune Thresholds
-                </button>
-              </>
-            ) : (
-              <form onSubmit={handleUpdateThresholds} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  <div>
-                    <label className="input-label" style={{ fontSize: '0.7rem' }}>Glucose Min</label>
-                    <input 
-                      type="number" 
-                      className="input-field" 
-                      style={{ padding: '6px', fontSize: '0.85rem' }}
-                      value={tuningGlucoseMin} 
-                      onChange={e => setTuningGlucoseMin(e.target.value)} 
-                      required 
-                    />
-                  </div>
-                  <div>
-                    <label className="input-label" style={{ fontSize: '0.7rem' }}>Glucose Max</label>
-                    <input 
-                      type="number" 
-                      className="input-field" 
-                      style={{ padding: '6px', fontSize: '0.85rem' }}
-                      value={tuningGlucoseMax} 
-                      onChange={e => setTuningGlucoseMax(e.target.value)} 
-                      required 
-                    />
-                  </div>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  <div>
-                    <label className="input-label" style={{ fontSize: '0.7rem' }}>Systolic Max</label>
-                    <input 
-                      type="number" 
-                      className="input-field" 
-                      style={{ padding: '6px', fontSize: '0.85rem' }}
-                      value={tuningBpSysMax} 
-                      onChange={e => setTuningBpSysMax(e.target.value)} 
-                      required 
-                    />
-                  </div>
-                  <div>
-                    <label className="input-label" style={{ fontSize: '0.7rem' }}>Diastolic Max</label>
-                    <input 
-                      type="number" 
-                      className="input-field" 
-                      style={{ padding: '6px', fontSize: '0.85rem' }}
-                      value={tuningBpDiaMax} 
-                      onChange={e => setTuningBpDiaMax(e.target.value)} 
-                      required 
-                    />
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                  <button type="submit" className="btn-primary" style={{ flex: 1, justifyContent: 'center', padding: '6px', fontSize: '0.85rem' }}>Save</button>
-                  <button type="button" className="btn-secondary" style={{ flex: 1, justifyContent: 'center', padding: '6px', fontSize: '0.85rem' }} onClick={() => setIsTuningOpen(false)}>Cancel</button>
-                </div>
-              </form>
-            )}
-
-            {/* Toggle reminders */}
-            <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--hairline-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ textAlign: 'left' }}>
-                <span className="input-label" style={{ margin: 0, fontSize: '0.85rem' }}>Adherence Alerts</span>
-                <span className="text-muted text-xs" style={{ display: 'block' }}>Get reminders to log vitals</span>
-              </div>
+        {/* Tab 4: Clinical AI Chat */}
+        {activeTab === 'chat' && (
+          <div className="chat-companion-card" style={{ height: '76vh', border: 'none', padding: 0 }}>
+            <div className="flex-between" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>
+              <span className="text-xs text-muted" style={{ fontWeight: '600' }}>Validated HIPAA self-management coach</span>
               <button 
                 type="button"
-                className={`btn-secondary ${isNotificationEnabled ? 'btn-primary' : ''}`}
-                style={{ height: '32px', padding: '0 12px', fontSize: '12px', backgroundColor: isNotificationEnabled ? 'var(--primary)' : 'var(--secondary-bg)', color: isNotificationEnabled ? '#fff' : 'var(--ink)' }}
-                onClick={handleToggleReminders}
+                style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '0.75rem', cursor: 'pointer', fontWeight: 'bold' }}
+                onClick={() => setIsPromptLabOpen(true)}
               >
-                {isNotificationEnabled ? '🔔 Active' : '🔕 Disabled'}
-              </button>
-            </div>
-          </div>
-
-          {/* Physician details */}
-          <div className="glass-panel" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <h3 className="heading-card">Physician Contacts</h3>
-            <div>
-              <strong style={{ color: 'var(--text-primary)', display: 'block' }}>{profile?.physicianName || 'Dr. Ramirez'}</strong>
-              <span className="text-muted text-sm">{profile?.physicianClinic || 'Oakridge Medical'}</span>
-            </div>
-            <a href={`tel:${profile?.physicianPhone || '555-0147'}`} className="btn-secondary" style={{ justifyContent: 'center', fontSize: '0.9rem' }}>
-              📞 Call Clinic ({profile?.physicianPhone || '555-0147'})
-            </a>
-          </div>
-
-          {/* Chat Companion */}
-          <div className="glass-panel chat-companion-card">
-            <div className="flex-between" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
-              <h3 className="heading-card">Clinical Companion</h3>
-              <button 
-                type="button"
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.8rem', cursor: 'pointer' }}
-                onClick={handleClearChat}
-              >
-                Clear History
+                💡 Prompt Lab
               </button>
             </div>
 
-            <div className="chat-messages-container">
+            <div className="chat-messages-container" style={{ padding: '8px 0' }}>
+              {chatMessages.length === 0 && (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', textAlign: 'center', color: 'var(--mute)', gap: '12px' }}>
+                  <span style={{ fontSize: '2.5rem' }}>🤖</span>
+                  <div style={{ fontSize: '13px', fontWeight: 'bold' }}>Ask Clinical AI Companion</div>
+                  <div style={{ fontSize: '11px', maxWidth: '250px', lineHeight: '1.4' }}>Consult evidence-based GINA/ADA medical guidelines or analyze biometric correlations.</div>
+                </div>
+              )}
               {chatMessages.map((msg, i) => (
-                <div className={`chat-message ${msg.sender}`} key={`msg-${i}`}>
+                <div className={`chat-message ${msg.sender}`} key={`msg-${i}`} style={{ padding: '10px 14px', borderRadius: '12px', fontSize: '13px', maxWidth: '85%' }}>
                   {msg.category && (
-                    <span style={{ display: 'block', fontSize: '0.7rem', fontWeight: 'bold', color: msg.sender === 'user' ? '#fff' : 'var(--primary)', marginBottom: '4px' }}>
+                    <span style={{ display: 'block', fontSize: '0.65rem', fontWeight: 'bold', color: msg.sender === 'user' ? '#fff' : 'var(--primary)', marginBottom: '2px' }}>
                       {msg.category}
                     </span>
                   )}
-                  <div style={{ whiteSpace: 'pre-line' }}>{msg.text}</div>
-                  <span style={{ display: 'block', fontSize: '0.65rem', textAlign: 'right', marginTop: '4px', opacity: 0.7 }}>
+                  <div style={{ whiteSpace: 'pre-line', textAlign: 'left' }}>{msg.text}</div>
+                  <span style={{ display: 'block', fontSize: '0.6rem', textAlign: 'right', marginTop: '4px', opacity: 0.65 }}>
                     {msg.timestamp}
                   </span>
                 </div>
@@ -1731,67 +1416,441 @@ export default function DashboardGrid({ onLogout }) {
                 placeholder="Ask about symptoms, patterns..." 
                 value={chatInput}
                 onChange={e => setChatInput(e.target.value)}
+                style={{ height: '38px', fontSize: '14px', borderRadius: '12px' }}
               />
-              <button type="submit" className="btn-primary">
+              <button type="submit" className="btn-primary" style={{ height: '38px', padding: '0 12px', fontSize: '13px' }}>
                 Send
               </button>
             </form>
           </div>
-        </div>
-      </main>
+        )}
 
+        {/* Tab 5: Profile & Care Thresholds */}
+        {activeTab === 'profile' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <h3 className="heading-card" style={{ fontSize: '16px', margin: 0 }}>Profile & Thresholds</h3>
+            
+            {/* Target Tuning Card */}
+            <div className="glass-panel" style={{ padding: '16px', textAlign: 'left' }}>
+              <h4 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '8px' }}>Target Tuning</h4>
+              {!isTuningOpen ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '12px' }}>
+                    <div style={{ padding: '8px', border: '1px solid var(--border-light)', borderRadius: '12px' }}>
+                      <span className="text-muted" style={{ display: 'block', fontSize: '10px' }}>Glucose target</span>
+                      <strong>{profile?.glucoseFastingTargetMin} - {profile?.glucoseFastingTargetMax} mg/dL</strong>
+                    </div>
+                    <div style={{ padding: '8px', border: '1px solid var(--border-light)', borderRadius: '12px' }}>
+                      <span className="text-muted" style={{ display: 'block', fontSize: '10px' }}>BP limits</span>
+                      <strong>{profile?.bpSystolicTargetMax}/{profile?.bpDiastolicTargetMax} mmHg</strong>
+                    </div>
+                  </div>
+                  <button className="btn-secondary" style={{ height: '32px', width: '100%', justifyContent: 'center', fontSize: '12px', marginTop: '6px' }} onClick={() => setIsTuningOpen(true)}>
+                    ⚙️ Tune Limits
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleUpdateThresholds} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <div>
+                      <label className="input-label" style={{ fontSize: '0.65rem' }}>Glucose Min</label>
+                      <input 
+                        type="number" 
+                        className="input-field" 
+                        style={{ padding: '6px', fontSize: '13px', height: '32px' }}
+                        value={tuningGlucoseMin} 
+                        onChange={e => setTuningGlucoseMin(e.target.value)} 
+                        required 
+                      />
+                    </div>
+                    <div>
+                      <label className="input-label" style={{ fontSize: '0.65rem' }}>Glucose Max</label>
+                      <input 
+                        type="number" 
+                        className="input-field" 
+                        style={{ padding: '6px', fontSize: '13px', height: '32px' }}
+                        value={tuningGlucoseMax} 
+                        onChange={e => setTuningGlucoseMax(e.target.value)} 
+                        required 
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    <div>
+                      <label className="input-label" style={{ fontSize: '0.65rem' }}>Systolic Max</label>
+                      <input 
+                        type="number" 
+                        className="input-field" 
+                        style={{ padding: '6px', fontSize: '13px', height: '32px' }}
+                        value={tuningBpSysMax} 
+                        onChange={e => setTuningBpSysMax(e.target.value)} 
+                        required 
+                      />
+                    </div>
+                    <div>
+                      <label className="input-label" style={{ fontSize: '0.65rem' }}>Diastolic Max</label>
+                      <input 
+                        type="number" 
+                        className="input-field" 
+                        style={{ padding: '6px', fontSize: '13px', height: '32px' }}
+                        value={tuningBpDiaMax} 
+                        onChange={e => setTuningBpDiaMax(e.target.value)} 
+                        required 
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                    <button type="submit" className="btn-primary" style={{ flex: 1, justifyContent: 'center', height: '32px', fontSize: '12px' }}>Save</button>
+                    <button type="button" className="btn-secondary" style={{ flex: 1, justifyContent: 'center', height: '32px', fontSize: '12px' }} onClick={() => setIsTuningOpen(false)}>Cancel</button>
+                  </div>
+                </form>
+              )}
+            </div>
+
+            {/* Adherence alerts switch */}
+            <div className="glass-panel" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ textAlign: 'left' }}>
+                <span style={{ fontWeight: 'bold', fontSize: '13px', display: 'block' }}>Adherence Alerts</span>
+                <span className="text-muted text-xs" style={{ display: 'block' }}>Daily logging notifications</span>
+              </div>
+              <button 
+                type="button"
+                className={`btn-secondary ${isNotificationEnabled ? 'btn-primary' : ''}`}
+                style={{ height: '32px', padding: '0 10px', fontSize: '11px', backgroundColor: isNotificationEnabled ? 'var(--primary)' : 'var(--secondary-bg)', color: isNotificationEnabled ? '#fff' : 'var(--ink)' }}
+                onClick={handleToggleReminders}
+              >
+                {isNotificationEnabled ? '🔔 Active' : '🔕 Off'}
+              </button>
+            </div>
+
+            {/* Physician details */}
+            <div className="glass-panel" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px', textAlign: 'left' }}>
+              <h4 style={{ fontSize: '14px', fontWeight: 'bold', margin: 0 }}>Clinic & Physician</h4>
+              <div>
+                <strong style={{ color: 'var(--text-primary)', fontSize: '13px', display: 'block' }}>{profile?.physicianName || 'Dr. Ramirez'}</strong>
+                <span className="text-muted text-xs">{profile?.physicianClinic || 'Oakridge Medical'}</span>
+              </div>
+              <a href={`tel:${profile?.physicianPhone || '555-0147'}`} className="btn-secondary" style={{ justifyContent: 'center', fontSize: '12px', height: '32px' }}>
+                📞 Call Clinic ({profile?.physicianPhone || '555-0147'})
+              </a>
+            </div>
+
+            {/* Inject Scenario Settings directly in Profile tab */}
+            <div className="glass-panel" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px', textAlign: 'left' }}>
+              <h4 style={{ fontSize: '14px', fontWeight: 'bold', margin: 0 }}>Demo Scenario Presets</h4>
+              <p className="text-muted text-xs" style={{ margin: 0, marginBottom: '8px' }}>Inject mock vitals history into the database:</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <button 
+                  type="button" 
+                  className="btn-secondary" 
+                  style={{ width: '100%', justifyContent: 'flex-start', fontSize: '0.8rem', padding: '8px 12px', height: 'auto' }} 
+                  onClick={async () => {
+                    await seedDemoScenario('stable');
+                    await loadAllData();
+                    alert('Stable Diabetes & Hypertension data seeded!');
+                  }}
+                >
+                  🟢 Stable Diabetes & BP
+                </button>
+                <button 
+                  type="button" 
+                  className="btn-secondary" 
+                  style={{ width: '100%', justifyContent: 'flex-start', fontSize: '0.8rem', padding: '8px 12px', height: 'auto' }} 
+                  onClick={async () => {
+                    await seedDemoScenario('hypertension_risk');
+                    await loadAllData();
+                    alert('Hypertension slope crisis data seeded!');
+                  }}
+                >
+                  🔴 Hypertension Slope Crisis
+                </button>
+                <button 
+                  type="button" 
+                  className="btn-secondary" 
+                  style={{ width: '100%', justifyContent: 'flex-start', fontSize: '0.8rem', padding: '8px 12px', height: 'auto' }} 
+                  onClick={async () => {
+                    await seedDemoScenario('anxiety_vagal');
+                    await loadAllData();
+                    alert('Anxiety Vagal HR coupling data seeded!');
+                  }}
+                >
+                  🟣 Anxiety Vagal HR Coupling
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Floating Action Button (FAB) (visible on Home, Logs, and Meds tabs) */}
+      {(activeTab === 'home' || activeTab === 'logs' || activeTab === 'meds') && (
+        <button 
+          type="button" 
+          className="fab no-print" 
+          onClick={() => setIsQuickLogOpen(true)}
+          title="Enter New Log"
+        >
+          +
+        </button>
+      )}
+
+      {/* Bottom Navigation Tabs */}
+      <nav className="bottom-nav no-print">
+        <button type="button" className={`nav-tab ${activeTab === 'home' ? 'active' : ''}`} onClick={() => setActiveTab('home')}>
+          <span className="nav-tab-icon">🏠</span>
+          <span className="nav-tab-label">Home</span>
+        </button>
+        <button type="button" className={`nav-tab ${activeTab === 'logs' ? 'active' : ''}`} onClick={() => setActiveTab('logs')}>
+          <span className="nav-tab-icon">📋</span>
+          <span className="nav-tab-label">Logs</span>
+        </button>
+        <button type="button" className={`nav-tab ${activeTab === 'meds' ? 'active' : ''}`} onClick={() => setActiveTab('meds')}>
+          <span className="nav-tab-icon">💊</span>
+          <span className="nav-tab-label">Meds</span>
+        </button>
+        <button type="button" className={`nav-tab ${activeTab === 'chat' ? 'active' : ''}`} onClick={() => setActiveTab('chat')}>
+          <span className="nav-tab-icon">💬</span>
+          <span className="nav-tab-label">Chat</span>
+        </button>
+        <button type="button" className={`nav-tab ${activeTab === 'profile' ? 'active' : ''}`} onClick={() => setActiveTab('profile')}>
+          <span className="nav-tab-icon">👤</span>
+          <span className="nav-tab-label">Profile</span>
+        </button>
+      </nav>
+
+      {/* Slider-based Quick Log Bottom Sheet */}
+      {isQuickLogOpen && (
+        <div className="bottom-sheet-backdrop no-print" onClick={() => setIsQuickLogOpen(false)}>
+          <div className="bottom-sheet" onClick={e => e.stopPropagation()}>
+            <div className="bottom-sheet-handle" />
+            <div className="flex-between" style={{ marginBottom: '16px' }}>
+              <h3 className="heading-card" style={{ fontSize: '16px', margin: 0 }}>Quick Biometric Entry</h3>
+              <button 
+                type="button" 
+                className="btn-secondary" 
+                style={{ height: '28px', padding: '0 8px', fontSize: '11px', backgroundColor: 'var(--secondary-bg)' }}
+                onClick={() => setIsBtModalOpen(true)}
+              >
+                🔌 Sync BLE
+              </button>
+            </div>
+            
+            <form onSubmit={(e) => { handleQuickLog(e); setIsQuickLogOpen(false); }} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {profile?.conditions?.toLowerCase().includes('diabetes') && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label className="input-label" htmlFor="quick-glucose" style={{ fontSize: '0.75rem' }}>Glucose (mg/dL)</label>
+                    <input 
+                      id="quick-glucose"
+                      type="number" 
+                      className="input-field" 
+                      placeholder="e.g. 115"
+                      value={logGlucose}
+                      onChange={e => setLogGlucose(e.target.value)}
+                      style={{ height: '36px', fontSize: '14px' }}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="quick-meal" className="input-label" style={{ fontSize: '0.75rem' }}>Breakfast:</label>
+                    <select 
+                      id="quick-meal"
+                      className="input-field" 
+                      value={logMeal}
+                      onChange={e => setLogMeal(e.target.value)}
+                      style={{ height: '36px', fontSize: '14px', background: 'var(--canvas)' }}
+                    >
+                      <option value="yes">Consumed</option>
+                      <option value="skipped">Skipped</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {(profile?.conditions?.toLowerCase().includes('hypertension') || profile?.conditions?.toLowerCase().includes('anxiety')) && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label className="input-label" htmlFor="quick-sys" style={{ fontSize: '0.75rem' }}>Systolic BP (mmHg)</label>
+                    <input 
+                      id="quick-sys"
+                      type="number" 
+                      className="input-field" 
+                      placeholder="120"
+                      value={logBpSys}
+                      onChange={e => setLogBpSys(e.target.value)}
+                      style={{ height: '36px', fontSize: '14px' }}
+                    />
+                  </div>
+                  <div>
+                    <label className="input-label" htmlFor="quick-dia" style={{ fontSize: '0.75rem' }}>Diastolic BP (mmHg)</label>
+                    <input 
+                      id="quick-dia"
+                      type="number" 
+                      className="input-field" 
+                      placeholder="80"
+                      value={logBpDia}
+                      onChange={e => setLogBpDia(e.target.value)}
+                      style={{ height: '36px', fontSize: '14px' }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {profile?.conditions?.toLowerCase().includes('anxiety') && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label className="input-label" htmlFor="quick-anxiety" style={{ fontSize: '0.75rem' }}>Anxiety (GAD-7 0–21)</label>
+                    <input 
+                      id="quick-anxiety"
+                      type="range" 
+                      min="0"
+                      max="21"
+                      value={logAnxiety}
+                      onChange={e => setLogAnxiety(Number(e.target.value))}
+                      style={{ width: '100%' }}
+                    />
+                    <div style={{ fontSize: '10px', fontWeight: 'bold', color: 'var(--primary)', textAlign: 'right' }}>
+                      Score: {logAnxiety}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="input-label" htmlFor="quick-hr" style={{ fontSize: '0.75rem' }}>Heart Rate (bpm)</label>
+                    <input 
+                      id="quick-hr"
+                      type="number" 
+                      className="input-field" 
+                      placeholder="e.g. 72"
+                      value={logHeartRate}
+                      onChange={e => setLogHeartRate(e.target.value)}
+                      style={{ height: '36px', fontSize: '14px' }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {profile?.conditions?.toLowerCase().includes('asthma') && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label className="input-label" htmlFor="quick-pf" style={{ fontSize: '0.75rem' }}>Peak Flow (L/min)</label>
+                    <input 
+                      id="quick-pf"
+                      type="number" 
+                      className="input-field" 
+                      placeholder="e.g. 500"
+                      value={logPeakFlow}
+                      onChange={e => setLogPeakFlow(e.target.value)}
+                      style={{ height: '36px', fontSize: '14px' }}
+                    />
+                  </div>
+                  <div>
+                    <label className="input-label" htmlFor="quick-puffs" style={{ fontSize: '0.75rem' }}>Rescue Inhaler Puffs</label>
+                    <input 
+                      id="quick-puffs"
+                      type="number" 
+                      className="input-field" 
+                      placeholder="e.g. 0"
+                      value={logInhalerPuffs}
+                      onChange={e => setLogInhalerPuffs(e.target.value)}
+                      style={{ height: '36px', fontSize: '14px' }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {profile?.conditions?.toLowerCase().includes('pain') && (
+                <div>
+                  <label className="input-label" htmlFor="quick-pain" style={{ fontSize: '0.75rem' }}>Pain Intensity (NRS 0–10)</label>
+                  <input 
+                    id="quick-pain"
+                    type="range" 
+                    min="0"
+                    max="10"
+                    value={logPain}
+                    onChange={e => setLogPain(Number(e.target.value))}
+                    style={{ width: '100%' }}
+                  />
+                  <div style={{ fontSize: '10px', fontWeight: 'bold', color: 'var(--primary)', textAlign: 'right' }}>
+                    Pain: {logPain}/10
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="input-label" htmlFor="quick-symptoms" style={{ fontSize: '0.75rem' }}>Symptoms Logged</label>
+                <input 
+                  id="quick-symptoms"
+                  type="text" 
+                  className="input-field" 
+                  placeholder="Headache, dizzy, none..."
+                  value={logSymptoms}
+                  onChange={e => setLogSymptoms(e.target.value)}
+                  style={{ height: '36px', fontSize: '14px' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+                <button type="button" className="btn-secondary" style={{ flex: 1, justifyContent: 'center' }} onClick={() => setIsQuickLogOpen(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary" style={{ flex: 1, justifyContent: 'center' }}>
+                  Log Vitals
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Prompts, breathing pacer modal, clinician report remain identically structured but nested within outer overlay rendering logic */}
       <PromptLab 
         isOpen={isPromptLabOpen} 
         onClose={() => setIsPromptLabOpen(false)} 
-        onSelectPrompt={processCompanionQuery} 
+        onSelectPrompt={(p) => { processCompanionQuery(p); setActiveTab('chat'); }} 
       />
-
-      <DemoControlDrawer onReload={loadAllData} />
 
       {isBtModalOpen && (
         <div className="modal-backdrop" onClick={() => btSyncState !== 'syncing' && setIsBtModalOpen(false)}>
-          <div className="modal-content-card" onClick={e => e.stopPropagation()}>
+          <div className="modal-content-card" style={{ padding: '20px' }} onClick={e => e.stopPropagation()}>
             {btSyncState === 'idle' && (
               <>
-                <h3 className="font-serif" style={{ fontSize: '1.25rem', marginBottom: '12px', textAlign: 'center' }}>Vitals Bluetooth Sync</h3>
-                <p className="text-muted text-sm" style={{ marginBottom: '20px', textAlign: 'center' }}>
-                  Select a clinical Bluetooth device to pair and pull live vitals telemetry:
+                <h3 className="font-serif" style={{ fontSize: '1.1rem', marginBottom: '8px', textAlign: 'center' }}>Bluetooth Sync</h3>
+                <p className="text-muted text-xs" style={{ marginBottom: '16px', textAlign: 'center' }}>
+                  Select a clinical Bluetooth device to pull live vitals telemetry:
                 </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <button 
                     type="button" 
                     className="btn-secondary" 
-                    style={{ padding: '12px', display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'flex-start', border: '1px solid var(--border-color)', borderRadius: '8px', width: '100%' }}
+                    style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-start', border: '1px solid var(--border-color)', borderRadius: '12px', width: '100%', height: 'auto' }}
                     onClick={() => runHighFidelitySimulatedSync({ type: 'glucometer', name: 'Accu-Chek Instant Glucometer' })}
                   >
-                    <span style={{ fontSize: '1.5rem' }}>🩸</span>
+                    <span style={{ fontSize: '1.2rem' }}>🩸</span>
                     <div style={{ textAlign: 'left' }}>
-                      <strong style={{ display: 'block', fontSize: '0.9rem' }}>Accu-Chek Instant</strong>
-                      <span className="text-muted text-xs">Fasting blood sugar sensor</span>
+                      <strong style={{ display: 'block', fontSize: '0.85rem' }}>Accu-Chek Instant</strong>
+                      <span className="text-muted" style={{ fontSize: '10px' }}>Blood sugar sensor</span>
                     </div>
                   </button>
                   <button 
                     type="button" 
                     className="btn-secondary" 
-                    style={{ padding: '12px', display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'flex-start', border: '1px solid var(--border-color)', borderRadius: '8px', width: '100%' }}
+                    style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-start', border: '1px solid var(--border-color)', borderRadius: '12px', width: '100%', height: 'auto' }}
                     onClick={() => runHighFidelitySimulatedSync({ type: 'bp_cuff', name: 'Omron Evolv Wireless Cuff' })}
                   >
-                    <span style={{ fontSize: '1.5rem' }}>🩺</span>
+                    <span style={{ fontSize: '1.2rem' }}>🩺</span>
                     <div style={{ textAlign: 'left' }}>
-                      <strong style={{ display: 'block', fontSize: '0.9rem' }}>Omron Evolv Cuff</strong>
-                      <span className="text-muted text-xs">Systolic & diastolic blood pressure</span>
+                      <strong style={{ display: 'block', fontSize: '0.85rem' }}>Omron Evolv Cuff</strong>
+                      <span className="text-muted" style={{ fontSize: '10px' }}>Blood pressure transmitter</span>
                     </div>
                   </button>
                   <button 
                     type="button" 
                     className="btn-secondary" 
-                    style={{ padding: '12px', display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'flex-start', border: '1px solid var(--border-color)', borderRadius: '8px', width: '100%' }}
+                    style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-start', border: '1px solid var(--border-color)', borderRadius: '12px', width: '100%', height: 'auto' }}
                     onClick={() => runHighFidelitySimulatedSync({ type: 'heart_rate', name: 'Polar H10 Heart Strap' })}
                   >
-                    <span style={{ fontSize: '1.5rem' }}>💓</span>
+                    <span style={{ fontSize: '1.2rem' }}>💓</span>
                     <div style={{ textAlign: 'left' }}>
-                      <strong style={{ display: 'block', fontSize: '0.9rem' }}>Polar H10 Strap</strong>
-                      <span className="text-muted text-xs">High-accuracy resting heart rate</span>
+                      <strong style={{ display: 'block', fontSize: '0.85rem' }}>Polar H10 Strap</strong>
+                      <span className="text-muted" style={{ fontSize: '10px' }}>Heart rate sensor</span>
                     </div>
                   </button>
                 </div>
@@ -1799,57 +1858,50 @@ export default function DashboardGrid({ onLogout }) {
             )}
 
             {btSyncState === 'searching' && (
-              <div style={{ padding: '20px 0', textAlign: 'center' }}>
-                <div style={{ margin: '0 auto 20px auto', width: '50px', height: '50px', borderRadius: '50%', border: '4px solid var(--primary)', borderTopColor: 'transparent', animation: 'spin 1s linear infinite' }} />
-                <h4 className="font-serif" style={{ fontSize: '1.1rem', marginBottom: '8px' }}>Scanning for {btSyncDeviceName || 'clinical channels'}...</h4>
-                <p className="text-muted text-xs">Searching for active Bluetooth medical transmitters...</p>
+              <div style={{ padding: '12px 0', textAlign: 'center' }}>
+                <div style={{ margin: '0 auto 12px auto', width: '36px', height: '36px', borderRadius: '50%', border: '3px solid var(--primary)', borderTopColor: 'transparent', animation: 'spin 1s linear infinite' }} />
+                <h4 className="font-serif" style={{ fontSize: '1rem', marginBottom: '4px' }}>Scanning...</h4>
+                <p className="text-muted" style={{ fontSize: '10px' }}>Searching for {btSyncDeviceName}</p>
               </div>
             )}
 
             {btSyncState === 'found' && (
-              <div style={{ padding: '20px 0', textAlign: 'center' }}>
-                <span style={{ fontSize: '3.5rem', display: 'block', marginBottom: '12px', animation: 'pulse 1s infinite' }}>📶</span>
-                <h4 className="font-serif" style={{ fontSize: '1.1rem', marginBottom: '8px', color: 'var(--color-success)' }}>
-                  {btSyncDeviceName} Identified
+              <div style={{ padding: '12px 0', textAlign: 'center' }}>
+                <span style={{ fontSize: '2.5rem', display: 'block', marginBottom: '8px' }}>📶</span>
+                <h4 className="font-serif" style={{ fontSize: '1rem', marginBottom: '4px', color: 'var(--color-success)' }}>
+                  Found Device
                 </h4>
-                <p className="text-muted text-sm" style={{ fontWeight: '500', color: 'var(--text-primary)' }}>MAC Address: 4C:24:D9:6A:BC:3F</p>
-                <p className="text-muted text-xs" style={{ marginTop: '4px' }}>Establishing secure pairing handshake...</p>
+                <p className="text-muted" style={{ fontSize: '11px', fontWeight: '500' }}>{btSyncDeviceName}</p>
+                <p className="text-muted" style={{ fontSize: '10px', marginTop: '2px' }}>Connecting...</p>
               </div>
             )}
 
             {btSyncState === 'syncing' && (
-              <div style={{ padding: '20px 0', textAlign: 'center' }}>
-                <div style={{ margin: '0 auto 20px auto', width: '50px', height: '50px', borderRadius: '50%', backgroundColor: 'var(--color-success-bg)', display: 'flex', alignItems: 'center', justifySelf: 'center', justifyContent: 'center', animation: 'ping 1.5s ease-in-out infinite' }}>
-                  <span style={{ fontSize: '1.5rem' }}>📥</span>
+              <div style={{ padding: '12px 0', textAlign: 'center' }}>
+                <div style={{ margin: '0 auto 12px auto', width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--color-success-bg)', display: 'flex', alignItems: 'center', justifySelf: 'center', justifyContent: 'center', animation: 'ping 1.5s ease-in-out infinite' }}>
+                  <span style={{ fontSize: '1.1rem' }}>📥</span>
                 </div>
-                <h4 className="font-serif" style={{ fontSize: '1.1rem', marginBottom: '8px' }}>Syncing telemetry data...</h4>
-                <div style={{ margin: '16px auto', padding: '12px', backgroundColor: 'var(--secondary-bg)', border: '1px solid var(--border-color)', borderRadius: '8px', width: 'fit-content', minWidth: '150px' }}>
-                  <span style={{ fontSize: '1.8rem', fontWeight: 'bold', fontFamily: 'monospace', color: 'var(--primary)', animation: 'pulse 0.5s infinite' }}>
+                <h4 className="font-serif" style={{ fontSize: '1rem', marginBottom: '4px' }}>Syncing data...</h4>
+                <div style={{ margin: '8px auto', padding: '6px', backgroundColor: 'var(--secondary-bg)', border: '1px solid var(--border-color)', borderRadius: '8px', width: 'fit-content' }}>
+                  <span style={{ fontSize: '1.4rem', fontWeight: 'bold', fontFamily: 'monospace', color: 'var(--primary)' }}>
                     {liveBtReading || '---'}
                   </span>
                 </div>
-                <p className="text-muted text-xs">Reading GATT Characteristic 0x2A35...</p>
               </div>
             )}
 
             {btSyncState === 'done' && (
-              <div style={{ padding: '20px 0', textAlign: 'center' }}>
-                <span style={{ fontSize: '3rem', display: 'block', marginBottom: '12px' }}>✅</span>
-                <h4 className="font-serif" style={{ fontSize: '1.1rem', marginBottom: '8px', color: 'var(--color-success)' }}>Sync Complete!</h4>
-                <p className="text-muted text-sm" style={{ marginBottom: '12px' }}>Biometric values transferred successfully:</p>
-                <div style={{ padding: '8px 16px', backgroundColor: 'var(--color-success-bg)', borderRadius: '8px', display: 'inline-block', color: 'var(--color-success)', fontWeight: 'bold' }}>
-                  {btDeviceType === 'glucometer' && `${logGlucose} mg/dL`}
-                  {btDeviceType === 'heart_rate' && `${logHeartRate} bpm`}
-                  {btDeviceType === 'bp_cuff' && `${logBpSys}/${logBpDia} mmHg`}
-                </div>
-                <p className="text-muted text-xs" style={{ marginTop: '12px' }}>Vitals prefilled in your log form.</p>
+              <div style={{ padding: '12px 0', textAlign: 'center' }}>
+                <span style={{ fontSize: '2rem', display: 'block', marginBottom: '8px' }}>✅</span>
+                <h4 className="font-serif" style={{ fontSize: '1rem', marginBottom: '4px', color: 'var(--color-success)' }}>Sync Complete</h4>
+                <p className="text-muted" style={{ fontSize: '11px' }}>Vitals successfully synced to form!</p>
               </div>
             )}
 
             <button 
               type="button" 
               className="btn-secondary" 
-              style={{ marginTop: '24px', width: '100%', justifyContent: 'center' }}
+              style={{ marginTop: '16px', width: '100%', justifyContent: 'center', height: '32px' }}
               onClick={() => setIsBtModalOpen(false)}
               disabled={btSyncState === 'syncing'}
             >
@@ -1861,24 +1913,24 @@ export default function DashboardGrid({ onLogout }) {
 
       {isBreathingModalOpen && (
         <div className="modal-backdrop" onClick={() => breathingPhase !== 'inhale' && breathingPhase !== 'hold' && breathingPhase !== 'exhale' && setIsBreathingModalOpen(false)}>
-          <div className="modal-content-card" style={{ maxWidth: '450px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-            <h3 className="font-serif" style={{ fontSize: '1.25rem', marginBottom: '8px' }}>Paced Breathing Coach</h3>
-            <p className="text-muted text-xs" style={{ marginBottom: '16px' }}>
-              Activated by GAD-7 Anxiety Guidelines. Performs 4-4-6 paced diaphragmatic breathing to stimulate the vagus nerve and reduce heart rate.
+          <div className="modal-content-card" style={{ maxWidth: '360px', padding: '20px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+            <h3 className="font-serif" style={{ fontSize: '1.15rem', marginBottom: '4px' }}>Paced Breathing Coach</h3>
+            <p className="text-muted" style={{ fontSize: '10px', marginBottom: '12px' }}>
+              Perform 4-4-6 paced breathing to lower resting heart rate.
             </p>
             
-            <div className="breathing-circle-wrapper">
-              <div className="breathing-circle-container">
+            <div className="breathing-circle-wrapper" style={{ height: '180px', margin: '12px 0' }}>
+              <div className="breathing-circle-container" style={{ width: '140px', height: '140px' }}>
                 <div className={`breathing-circle-outer ${breathingPhase}`} />
-                <div className={`breathing-circle-inner ${breathingPhase}`}>
-                  <strong style={{ fontSize: '1.25rem' }}>
+                <div className={`breathing-circle-inner ${breathingPhase}`} style={{ width: '70px', height: '70px' }}>
+                  <strong style={{ fontSize: '0.95rem' }}>
                     {breathingPhase === 'idle' && 'Ready'}
                     {breathingPhase === 'inhale' && 'Inhale'}
                     {breathingPhase === 'hold' && 'Hold'}
                     {breathingPhase === 'exhale' && 'Exhale'}
                     {breathingPhase === 'completed' && 'Done!'}
                   </strong>
-                  <span style={{ fontSize: '0.8rem', opacity: 0.8, marginTop: '2px' }}>
+                  <span style={{ fontSize: '0.75rem', marginTop: '1px' }}>
                     {breathingPhase !== 'idle' && breathingPhase !== 'completed' && `${breathingCountdown}s`}
                   </span>
                 </div>
@@ -1886,9 +1938,9 @@ export default function DashboardGrid({ onLogout }) {
             </div>
 
             {breathingPhase !== 'idle' && breathingPhase !== 'completed' && (
-              <div style={{ marginBottom: '16px' }}>
-                <span className="text-muted text-sm">Cycle <strong>{breathingCycles + 1}</strong> of 4</span>
-                <div style={{ width: '100px', height: '4px', backgroundColor: 'var(--border-light)', borderRadius: '2px', margin: '8px auto 0 auto', overflow: 'hidden' }}>
+              <div style={{ marginBottom: '12px', fontSize: '11px' }}>
+                <span className="text-muted">Cycle <strong>{breathingCycles + 1}</strong> of 4</span>
+                <div style={{ width: '80px', height: '3px', backgroundColor: 'var(--border-light)', borderRadius: '2px', margin: '6px auto 0 auto', overflow: 'hidden' }}>
                   <div style={{ width: `${(breathingCycles / 4) * 100}%`, height: '100%', backgroundColor: 'var(--primary)', transition: 'width 0.3s ease' }} />
                 </div>
               </div>
@@ -1898,7 +1950,7 @@ export default function DashboardGrid({ onLogout }) {
               <button 
                 type="button" 
                 className="btn-primary" 
-                style={{ width: '100%', justifyContent: 'center' }}
+                style={{ width: '100%', justifyContent: 'center', height: '36px' }}
                 onClick={startBreathing}
               >
                 🧘 Start Exercise
@@ -1906,24 +1958,22 @@ export default function DashboardGrid({ onLogout }) {
             )}
 
             {breathingPhase === 'completed' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ color: 'var(--color-success)', fontWeight: '600', fontSize: '0.9rem', marginBottom: '8px' }}>
-                  Exercise completed! You completed 4 cycles of paced breathing.
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ color: 'var(--color-success)', fontWeight: '600', fontSize: '11px', marginBottom: '4px' }}>
+                  Completed 4 cycles of paced breathing!
                 </div>
                 <button 
                   type="button" 
                   className="btn-primary" 
-                  style={{ width: '100%', justifyContent: 'center' }}
+                  style={{ width: '100%', justifyContent: 'center', height: '36px', fontSize: '11px' }}
                   onClick={() => {
                     setLogHeartRate('68');
                     setIsBreathingModalOpen(false);
-                    setTimeout(() => {
-                      const hrInput = document.querySelector('input[placeholder*="heart"], input[name*="heart"], #heartRate');
-                      if (hrInput) hrInput.focus();
-                    }, 100);
+                    // Open Quick Log Bottom Sheet and focus heart rate field
+                    setIsQuickLogOpen(true);
                   }}
                 >
-                  💓 Sync Post-Breathing Heart Rate (68 bpm)
+                  💓 Sync Post-Breathing HR (68 bpm)
                 </button>
               </div>
             )}
@@ -1932,7 +1982,7 @@ export default function DashboardGrid({ onLogout }) {
               <button 
                 type="button" 
                 className="btn-danger" 
-                style={{ width: '100%', justifyContent: 'center' }}
+                style={{ width: '100%', justifyContent: 'center', height: '36px' }}
                 onClick={stopBreathing}
               >
                 Stop Exercise
@@ -1943,7 +1993,7 @@ export default function DashboardGrid({ onLogout }) {
               <button 
                 type="button" 
                 className="btn-secondary" 
-                style={{ marginTop: '12px', width: '100%', justifyContent: 'center' }}
+                style={{ marginTop: '8px', width: '100%', justifyContent: 'center', height: '32px' }}
                 onClick={() => setIsBreathingModalOpen(false)}
               >
                 Close
@@ -1954,59 +2004,57 @@ export default function DashboardGrid({ onLogout }) {
       )}
 
       {isReportModalOpen && (
-        <div className="modal-backdrop clinician-report-backdrop" onClick={() => setIsReportModalOpen(false)}>
-          <div className="modal-content-card clinician-report-modal" style={{ maxWidth: '800px', width: '95%', textAlign: 'left' }} onClick={e => e.stopPropagation()}>
-            <div className="flex-between no-print" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '20px' }}>
-              <h3 className="font-serif" style={{ fontSize: '1.25rem' }}>📄 Clinician PDF Report Generator</h3>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button type="button" className="btn-primary" onClick={() => window.print()}>
+        <div className="modal-backdrop" onClick={() => setIsReportModalOpen(false)}>
+          <div className="modal-content-card clinician-report-modal" style={{ maxWidth: '800px', width: '95%', textAlign: 'left', padding: '16px' }} onClick={e => e.stopPropagation()}>
+            <div className="flex-between no-print" style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '8px', marginBottom: '16px' }}>
+              <h3 className="font-serif" style={{ fontSize: '1.15rem' }}>📄 Clinician Report</h3>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button type="button" className="btn-primary" style={{ height: '32px', padding: '0 12px', fontSize: '12px' }} onClick={() => window.print()}>
                   🖨️ Print / Save PDF
                 </button>
-                <button type="button" className="btn-secondary" onClick={() => setIsReportModalOpen(false)}>
+                <button type="button" className="btn-secondary" style={{ height: '32px', padding: '0 12px', fontSize: '12px' }} onClick={() => setIsReportModalOpen(false)}>
                   Close
                 </button>
               </div>
             </div>
 
-            <div className="printable-report-container" style={{ color: '#000', backgroundColor: '#fff', padding: '16px' }}>
-              <div style={{ borderBottom: '2px solid #333', paddingBottom: '12px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div className="printable-report-container" style={{ color: '#000', backgroundColor: '#fff', padding: '8px' }}>
+              <div style={{ borderBottom: '2px solid #333', paddingBottom: '8px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <h1 style={{ fontSize: '1.6rem', fontWeight: 'bold', margin: '0 0 4px 0', color: '#111' }}>CHRONICCARE COMPANION</h1>
-                  <span style={{ fontSize: '0.85rem', color: '#666', fontWeight: '600', textTransform: 'uppercase' }}>Clinical Vitals & Compliance Summary Report</span>
+                  <h1 style={{ fontSize: '1.4rem', fontWeight: 'bold', margin: '0 0 2px 0', color: '#111' }}>CHRONICCARE COMPANION</h1>
+                  <span style={{ fontSize: '0.75rem', color: '#666', fontWeight: '600', textTransform: 'uppercase' }}>Clinical Vitals Summary Report</span>
                 </div>
-                <div style={{ textAlign: 'right', fontSize: '0.85rem' }}>
-                  <strong>Report Generated:</strong> {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                <div style={{ textAlign: 'right', fontSize: '0.75rem' }}>
+                  <strong>Report Date:</strong> {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px', fontSize: '0.9rem' }}>
-                <div style={{ border: '1px solid #ddd', padding: '12px', borderRadius: '6px' }}>
-                  <h4 style={{ margin: '0 0 8px 0', borderBottom: '1px solid #eee', paddingBottom: '4px', fontWeight: 'bold' }}>Patient Details</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px', fontSize: '0.8rem' }}>
+                <div style={{ border: '1px solid #ddd', padding: '8px', borderRadius: '6px' }}>
+                  <h4 style={{ margin: '0 0 6px 0', borderBottom: '1px solid #eee', paddingBottom: '2px', fontWeight: 'bold' }}>Patient Details</h4>
                   <div><strong>Name:</strong> {profile?.name || 'Jane Doe'}</div>
-                  <div><strong>Chronic Diagnoses:</strong> {profile?.conditions || 'Not configured'}</div>
-                  <div><strong>Active Logging Days:</strong> {logs.length} days</div>
+                  <div><strong>Diagnoses:</strong> {profile?.conditions || 'Not configured'}</div>
                   <div><strong>Logging Streak:</strong> {streakDays} days</div>
                 </div>
-                <div style={{ border: '1px solid #ddd', padding: '12px', borderRadius: '6px' }}>
-                  <h4 style={{ margin: '0 0 8px 0', borderBottom: '1px solid #eee', paddingBottom: '4px', fontWeight: 'bold' }}>Primary Care Physician</h4>
+                <div style={{ border: '1px solid #ddd', padding: '8px', borderRadius: '6px' }}>
+                  <h4 style={{ margin: '0 0 6px 0', borderBottom: '1px solid #eee', paddingBottom: '2px', fontWeight: 'bold' }}>Clinic & Physician</h4>
                   <div><strong>Physician:</strong> {profile?.physicianName || 'Dr. Ramirez'}</div>
                   <div><strong>Clinic:</strong> {profile?.physicianClinic || 'Oakridge Medical'}</div>
                   <div><strong>Phone:</strong> {profile?.physicianPhone || '555-0147'}</div>
-                  <div><strong>Consent Link Status:</strong> Active Cloud Sync</div>
                 </div>
               </div>
 
-              <h4 style={{ margin: '20px 0 8px 0', fontWeight: 'bold', fontSize: '1rem', borderBottom: '1px solid #333', paddingBottom: '4px' }}>7-Day Biometrics & Vitals Summary</h4>
-              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px', fontSize: '0.85rem' }}>
+              <h4 style={{ margin: '16px 0 6px 0', fontWeight: 'bold', fontSize: '0.9rem', borderBottom: '1px solid #333', paddingBottom: '2px' }}>7-Day Biometrics & Vitals Summary</h4>
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '16px', fontSize: '0.75rem' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#f5f5f5', borderBottom: '2px solid #ddd' }}>
-                    <th style={{ textAlign: 'left', padding: '8px', border: '1px solid #ddd' }}>Biometric Parameter</th>
-                    <th style={{ textAlign: 'center', padding: '8px', border: '1px solid #ddd' }}>Clinical Target Range</th>
-                    <th style={{ textAlign: 'center', padding: '8px', border: '1px solid #ddd' }}>Min (7d)</th>
-                    <th style={{ textAlign: 'center', padding: '8px', border: '1px solid #ddd' }}>Max (7d)</th>
-                    <th style={{ textAlign: 'center', padding: '8px', border: '1px solid #ddd' }}>Avg (7d)</th>
-                    <th style={{ textAlign: 'center', padding: '8px', border: '1px solid #ddd' }}>Trend Slope</th>
-                    <th style={{ textAlign: 'center', padding: '8px', border: '1px solid #ddd' }}>Alert Status</th>
+                    <th style={{ textAlign: 'left', padding: '6px', border: '1px solid #ddd' }}>Biometric Parameter</th>
+                    <th style={{ textAlign: 'center', padding: '6px', border: '1px solid #ddd' }}>Clinical Target Range</th>
+                    <th style={{ textAlign: 'center', padding: '6px', border: '1px solid #ddd' }}>Min (7d)</th>
+                    <th style={{ textAlign: 'center', padding: '6px', border: '1px solid #ddd' }}>Max (7d)</th>
+                    <th style={{ textAlign: 'center', padding: '6px', border: '1px solid #ddd' }}>Avg (7d)</th>
+                    <th style={{ textAlign: 'center', padding: '6px', border: '1px solid #ddd' }}>Trend Slope</th>
+                    <th style={{ textAlign: 'center', padding: '6px', border: '1px solid #ddd' }}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2015,7 +2063,7 @@ export default function DashboardGrid({ onLogout }) {
                     if (!stats) {
                       return (
                         <tr>
-                          <td colSpan="7" style={{ textAlign: 'center', padding: '12px', color: '#666' }}>No biometric log history recorded in the past 7 days.</td>
+                          <td colSpan="7" style={{ textAlign: 'center', padding: '8px', color: '#666' }}>No biometric log history recorded.</td>
                         </tr>
                       );
                     }
@@ -2052,31 +2100,20 @@ export default function DashboardGrid({ onLogout }) {
                       const avgAnx = stats.anxiety.count > 0 ? Math.round(stats.anxiety.sum / stats.anxiety.count) : null;
                       const isAlert = avgAnx !== null && avgAnx >= 10;
                       rows.push({
-                        name: 'Anxiety Scale (GAD-7)',
-                        target: '< 10 (Moderate Threshold)',
+                        name: 'Anxiety Scale GAD-7',
+                        target: '< 10',
                         min: stats.anxiety.count > 0 ? `${stats.anxiety.min}/21` : 'N/A',
                         max: stats.anxiety.count > 0 ? `${stats.anxiety.max}/21` : 'N/A',
                         avg: avgAnx ? `${avgAnx}/21` : 'N/A',
                         trend: getTrendDirection('anxiety'),
                         status: isAlert ? '⚠️ Elevated Anxiety' : '✅ Controlled'
                       });
-                      
-                      const avgHR = stats.hr.count > 0 ? Math.round(stats.hr.sum / stats.hr.count) : null;
-                      rows.push({
-                        name: 'Resting Heart Rate (HR)',
-                        target: '60 - 100 bpm',
-                        min: stats.hr.count > 0 ? `${stats.hr.min} bpm` : 'N/A',
-                        max: stats.hr.count > 0 ? `${stats.hr.max} bpm` : 'N/A',
-                        avg: avgHR ? `${avgHR} bpm` : 'N/A',
-                        trend: 'Stable ➡️',
-                        status: avgHR && (avgHR > 100 || avgHR < 60) ? '⚠️ Out of Range' : '✅ Normal'
-                      });
                     }
                     if (profile?.conditions?.toLowerCase().includes('asthma')) {
                       const avgPF = stats.pf.count > 0 ? Math.round(stats.pf.sum / stats.pf.count) : null;
                       const isAlert = avgPF !== null && avgPF < 350;
                       rows.push({
-                        name: 'Peak Expiratory Flow (PEF)',
+                        name: 'Peak Flow (PEF)',
                         target: '> 350 L/min',
                         min: stats.pf.count > 0 ? `${stats.pf.min} L/min` : 'N/A',
                         max: stats.pf.count > 0 ? `${stats.pf.max} L/min` : 'N/A',
@@ -2089,8 +2126,8 @@ export default function DashboardGrid({ onLogout }) {
                       const avgPain = stats.pain.count > 0 ? Math.round(stats.pain.sum / stats.pain.count) : null;
                       const isAlert = avgPain !== null && avgPain >= 6;
                       rows.push({
-                        name: 'Pain Intensity (NRS-10)',
-                        target: '< 4 (Managed Pain)',
+                        name: 'Pain Intensity (NRS)',
+                        target: '< 4',
                         min: stats.pain.count > 0 ? `${stats.pain.min}/10` : 'N/A',
                         max: stats.pain.count > 0 ? `${stats.pain.max}/10` : 'N/A',
                         avg: avgPain ? `${avgPain}/10` : 'N/A',
@@ -2101,47 +2138,47 @@ export default function DashboardGrid({ onLogout }) {
 
                     return rows.map((r, i) => (
                       <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
-                        <td style={{ padding: '8px', border: '1px solid #ddd', fontWeight: 'bold' }}>{r.name}</td>
-                        <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', color: '#555' }}>{r.target}</td>
-                        <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>{r.min}</td>
-                        <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>{r.max}</td>
-                        <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', fontWeight: '600' }}>{r.avg}</td>
-                        <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center' }}>{r.trend}</td>
-                        <td style={{ padding: '8px', border: '1px solid #ddd', textAlign: 'center', fontWeight: '600', color: r.status.includes('✅') ? '#2e7d32' : '#c62828' }}>{r.status}</td>
+                        <td style={{ padding: '6px', border: '1px solid #ddd', fontWeight: 'bold' }}>{r.name}</td>
+                        <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center', color: '#555' }}>{r.target}</td>
+                        <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center' }}>{r.min}</td>
+                        <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center' }}>{r.max}</td>
+                        <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center', fontWeight: '600' }}>{r.avg}</td>
+                        <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center' }}>{r.trend}</td>
+                        <td style={{ padding: '6px', border: '1px solid #ddd', textAlign: 'center', fontWeight: '600', color: r.status.includes('✅') ? '#2e7d32' : '#c62828' }}>{r.status}</td>
                       </tr>
                     ));
                   })()}
                 </tbody>
               </table>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '20px', marginBottom: '20px' }}>
-                <div style={{ border: '1px solid #ddd', padding: '12px', borderRadius: '6px', fontSize: '0.85rem' }}>
-                  <h4 style={{ margin: '0 0 8px 0', borderBottom: '1px solid #eee', paddingBottom: '4px', fontWeight: 'bold' }}>Cross-Condition Correlations & Clinical Forecasts</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px', fontSize: '0.8rem' }}>
+                <div style={{ border: '1px solid #ddd', padding: '8px', borderRadius: '6px' }}>
+                  <h4 style={{ margin: '0 0 6px 0', borderBottom: '1px solid #eee', paddingBottom: '2px', fontWeight: 'bold' }}>Clinical Correlations & Warnings</h4>
                   {analysis.alerts.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '8px' }}>
                       {analysis.alerts.map((a, i) => (
-                        <div key={i} style={{ color: '#c62828', fontWeight: '500' }}>⚠️ 48h Alert: {a}</div>
+                        <div key={i} style={{ color: '#c62828', fontWeight: '500' }}>⚠️ 48h Forecast: {a}</div>
                       ))}
                     </div>
                   ) : (
-                    <div style={{ color: '#2e7d32', fontWeight: '500', marginBottom: '12px' }}>✅ No immediate clinical risks or hypoglycemia episodes predicted for the next 48 hours.</div>
+                    <div style={{ color: '#2e7d32', fontWeight: '500', marginBottom: '8px' }}>✅ No immediate critical 48-hour forecast alerts.</div>
                   )}
-                  <div style={{ borderLeft: '3px solid #7e238b', paddingLeft: '8px', marginTop: '8px', fontStyle: 'italic', color: '#333' }}>
-                    <strong>Anxiety & Heart Rate:</strong> {getAnxietyHRCorrelation()}
+                  <div style={{ borderLeft: '3px solid #7e238b', paddingLeft: '6px', marginTop: '6px', fontStyle: 'italic', color: '#333' }}>
+                    <strong>Anxiety coupling:</strong> {getAnxietyHRCorrelation()}
                   </div>
                 </div>
 
-                <div style={{ border: '1px solid #ddd', padding: '12px', borderRadius: '6px', fontSize: '0.85rem' }}>
-                  <h4 style={{ margin: '0 0 8px 0', borderBottom: '1px solid #eee', paddingBottom: '4px', fontWeight: 'bold' }}>Active Prescriptions Adherence</h4>
+                <div style={{ border: '1px solid #ddd', padding: '8px', borderRadius: '6px' }}>
+                  <h4 style={{ margin: '0 0 6px 0', borderBottom: '1px solid #eee', paddingBottom: '2px', fontWeight: 'bold' }}>Medication Adherence</h4>
                   {meds.length === 0 ? (
-                    <div style={{ color: '#666' }}>No active prescriptions listed.</div>
+                    <div style={{ color: '#666' }}>No active prescriptions.</div>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                       {meds.map(m => (
-                        <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span><strong>{m.name}</strong> ({m.dose})</span>
+                        <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>{m.name} ({m.dose})</span>
                           <span style={{ color: m.taken ? '#2e7d32' : '#c62828', fontWeight: '600' }}>
-                            {m.taken ? '✓ Taken Today' : '✗ Missed/Remaining'}
+                            {m.taken ? '✓ Taken' : '✗ Missed'}
                           </span>
                         </div>
                       ))}
@@ -2150,17 +2187,11 @@ export default function DashboardGrid({ onLogout }) {
                 </div>
               </div>
 
-              <div style={{ border: '1px solid #ddd', padding: '12px', borderRadius: '6px', fontSize: '0.85rem', marginBottom: '24px' }}>
-                <h4 style={{ margin: '0 0 8px 0', borderBottom: '1px solid #eee', paddingBottom: '4px', fontWeight: 'bold' }}>Clinician Notes & Consultation Summary</h4>
-                <div style={{ height: '60px', borderBottom: '1px dashed #999', marginBottom: '10px' }} />
-                <div style={{ height: '40px' }} />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem', marginTop: '30px' }}>
-                <div style={{ width: '45%', borderTop: '1px solid #333', paddingTop: '8px', textAlign: 'center' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', marginTop: '24px' }}>
+                <div style={{ width: '45%', borderTop: '1px solid #333', paddingTop: '4px', textAlign: 'center' }}>
                   Patient Signature & Date
                 </div>
-                <div style={{ width: '45%', borderTop: '1px solid #333', paddingTop: '8px', textAlign: 'center' }}>
+                <div style={{ width: '45%', borderTop: '1px solid #333', paddingTop: '4px', textAlign: 'center' }}>
                   Clinician Signature & Credentials
                 </div>
               </div>

@@ -71,9 +71,13 @@ function App() {
     return (
       <>
         <GlowBackground />
-        <LandingPage 
-          onAuthSuccess={refreshProfileCheck} 
-        />
+        <div className="app-device-frame">
+          <div className="mobile-app-shell">
+            <LandingPage 
+              onAuthSuccess={refreshProfileCheck} 
+            />
+          </div>
+        </div>
       </>
     );
   }
@@ -92,9 +96,13 @@ function App() {
     return (
       <>
         <GlowBackground />
-        <OnboardingWizard 
-          onComplete={refreshProfileCheck} 
-        />
+        <div className="app-device-frame">
+          <div className="mobile-app-shell">
+            <OnboardingWizard 
+              onComplete={refreshProfileCheck} 
+            />
+          </div>
+        </div>
       </>
     );
   }
@@ -103,9 +111,13 @@ function App() {
   return (
     <div className="android-fade-in">
       <GlowBackground />
-      <DashboardGrid 
-        onLogout={logout} 
-      />
+      <div className="app-device-frame">
+        <div className="mobile-app-shell">
+          <DashboardGrid 
+            onLogout={logout} 
+          />
+        </div>
+      </div>
     </div>
   );
 }

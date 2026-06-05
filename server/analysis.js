@@ -132,7 +132,7 @@ export function calculateStreak(logs, medications, todayStr) {
   
   let streak = 0;
   const todayLog = logs.find(l => l.date === todayStr);
-  const medsAllTaken = medications.length > 0 ? medications.every(m => m.taken === 1) : true;
+  const medsAllTaken = medications.length > 0 ? medications.every(m => m.taken === 1 || m.taken === true) : true;
   
   const todayIsComplete = todayLog && medsAllTaken;
   let startOffset = 0;
@@ -144,9 +144,10 @@ export function calculateStreak(logs, medications, todayStr) {
     startOffset = 1;
   }
 
+  let offset = startOffset;
   while (true) {
     const d = new Date();
-    d.setDate(d.getDate() - (startOffset + streak));
+    d.setDate(d.getDate() - offset);
     const day = String(d.getDate()).padStart(2, "0");
     const month = d.toLocaleDateString("en-US", { month: "short" });
     const formatted = `${month} ${day}`;
@@ -154,6 +155,7 @@ export function calculateStreak(logs, medications, todayStr) {
     const log = logs.find(l => l.date === formatted);
     if (log) {
       streak++;
+      offset++;
     } else {
       break;
     }

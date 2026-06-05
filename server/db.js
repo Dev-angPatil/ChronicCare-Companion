@@ -13,7 +13,7 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const isPostgres = !!process.env.DATABASE_URL;
+const isPostgres = !!process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('[YOUR_PASSWORD]');
 let dbSqlite = null;
 let pgPool = null;
 

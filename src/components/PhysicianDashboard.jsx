@@ -61,21 +61,36 @@ export default function PhysicianDashboard({ onLogout }) {
   const getChartPoints = () => {
     if (!patientData || !patientData.logs || patientData.logs.length === 0) return [];
     const chartLogs = [...patientData.logs].slice(-7);
-    
-    return chartLogs.map((log, idx) => {
+    const validPoints = [];
+
+    chartLogs.forEach((log, idx) => {
       const x = 50 + (idx * 65);
       let y = 150;
       let rawVal = 0;
+      let hasVal = false;
 
       if (graphMode === 'glucose') {
-        rawVal = log.glucose || 0;
-        y = 180 - ((rawVal - 40) / 180) * 160;
+        if (log.glucose !== null && log.glucose !== undefined) {
+          rawVal = log.glucose;
+          y = 180 - ((rawVal - 40) / 180) * 160;
+          hasVal = true;
+        }
       } else {
-        rawVal = log.bp ? parseInt(log.bp.split('/')[0]) : 0;
-        y = 180 - ((rawVal - 80) / 100) * 160;
+        if (log.bp) {
+          const sys = parseInt(log.bp.split('/')[0]);
+          if (!isNaN(sys)) {
+            rawVal = sys;
+            y = 180 - ((rawVal - 80) / 100) * 160;
+            hasVal = true;
+          }
+        }
       }
-      return { x, y, rawVal, date: log.date };
+      if (hasVal) {
+        validPoints.push({ x, y, rawVal, date: log.date });
+      }
     });
+
+    return validPoints;
   };
 
   const points = getChartPoints();
@@ -256,7 +271,7 @@ export default function PhysicianDashboard({ onLogout }) {
                 </div>
 
                 <div className="chart-svg-container">
-                  {patientData.logs.length < 2 ? (
+                  {points.length < 2 ? (
                     <div className="flex-center" style={{ height: '100%', color: 'var(--text-muted)' }}>
                       Patient has not logged enough readings to plot charts.
                     </div>
