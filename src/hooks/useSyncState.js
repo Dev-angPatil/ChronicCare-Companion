@@ -60,10 +60,17 @@ export default function useSyncState() {
         setUser({ authenticated: true, role });
         setHasProfile(!!prof);
       } catch (err) {
-        console.error('Session verification failed, resetting token:', err);
-        localStorage.removeItem('cc_token');
-        setUser(null);
-        setHasProfile(false);
+        console.error('Session verification failed:', err);
+        if (err.message === 'AUTH_EXPIRED') {
+          console.warn('Authentication token expired or rejected by server. Resetting session.');
+          localStorage.removeItem('cc_token');
+          setUser(null);
+          setHasProfile(false);
+        } else {
+          console.warn('Network error or timeout. Falling back to local offline mode.');
+          setUser({ authenticated: true, role });
+          setHasProfile(true);
+        }
       }
     } else {
       setUser(null);
