@@ -1016,3 +1016,100 @@ h1, h2, h3, h4, h5, h6 {
   transform: scale(0.97);
   transition: transform 0.08s ease-out;
 }
+
+/* NATIVE ANDROID PUSH NOTIFICATION BANNER */
+.android-notification-wrapper {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-150%);
+  width: 92%;
+  max-width: 420px;
+  z-index: 100000;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.android-notification-wrapper.show {
+  transform: translateX(-50%) translateY(0);
+}
+
+.android-notification-card {
+  background: rgba(24, 24, 25, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 14px 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #ffffff;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.android-notification-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+}
+
+.android-notification-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--primary);
+  font-size: 0.65rem;
+}
+
+.android-notification-title {
+  font-weight: 600;
+  flex: 1;
+  text-align: left;
+  color: #dddddd;
+}
+
+.android-notification-time {
+  color: #888888;
+}
+
+.android-notification-body {
+  font-size: 0.82rem;
+  line-height: 1.4;
+  text-align: left;
+  color: #eeeeee;
+  margin: 2px 0;
+}
+
+.android-notification-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 6px;
+}
+
+.android-notification-btn {
+  background: transparent;
+  border: none;
+  color: #e60023;
+  font-weight: 700;
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.android-notification-btn.secondary {
+  color: #888888;
+}
+
+.android-notification-btn:active {
+  opacity: 0.5;
+}

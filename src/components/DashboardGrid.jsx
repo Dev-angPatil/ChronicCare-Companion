@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getProfile, getLogs, addLog, getMedications, updateMedication, deleteMedication, getMessages, addMessage, clearMessages, logUserActivity, getAnalysisData, getPatientLinks, respondToLink, getGeminiResponse, getOfflineQueueCount, syncOfflineQueue } from '../utils/db.js';
 import PromptLab from './PromptLab.jsx';
 import DemoControlDrawer from './DemoControlDrawer.jsx';
@@ -71,6 +71,76 @@ export default function DashboardGrid({ onLogout }) {
   // Bluetooth Emulator States
   const [btSyncDeviceName, setBtSyncDeviceName] = useState('');
   const [liveBtReading, setLiveBtReading] = useState('');
+
+  const [notification, setNotification] = useState({ show: false, title: '', body: '', type: '', data: null });
+  const chatMessagesEndRef = useRef(null);
+
+  useEffect(() => {
+    if (chatMessagesEndRef.current) {
+      chatMessagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages]);
+
+  const handleNotificationAction = async (action) => {
+    setNotification(n => ({ ...n, show: false }));
+    
+    if (action === 'take' && notification.type === 'medication') {
+      const medId = notification.data?.medId;
+      const targetMed = meds.find(m => m.id === medId || m.name.toLowerCase() === medId);
+      if (targetMed) {
+        try {
+          await updateMedication({ ...targetMed, taken: true });
+          await logUserActivity('compliance_update', `Marked ${targetMed.name} ${targetMed.dose} as taken via push notification.`);
+          await loadAllData();
+          alert(`Prescription compliance logged: ${targetMed.name} taken.`);
+        } catch (err) {
+          console.error('Failed to update medication via notification:', err);
+        }
+      } else {
+        try {
+          await updateMedication({ id: 'metformin', name: 'Metformin', dose: '500mg', frequency: 'Twice daily (Morning/Night)', taken: true, remainingHours: 12 });
+          await logUserActivity('compliance_update', 'Marked Metformin 500mg as taken via push notification.');
+          await loadAllData();
+          alert('Prescription compliance logged: Metformin 500mg taken.');
+        } catch (err) {
+          console.error('Failed to update mock medication:', err);
+        }
+      }
+    } else if (action === 'retest' && notification.type === 'critical_vital') {
+      const bpInput = document.getElementById('quick-sys');
+      if (bpInput) {
+        bpInput.scrollIntoView({ behavior: 'smooth' });
+        bpInput.focus();
+      }
+    }
+  };
+
+  useEffect(() => {
+    let hideTimer;
+    
+    const handleTriggerNotification = (e) => {
+      setNotification({
+        show: true,
+        title: e.detail.title,
+        body: e.detail.body,
+        type: e.detail.type,
+        data: e.detail.data
+      });
+      
+      if (e.detail.type !== 'medication') {
+        if (hideTimer) clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => {
+          setNotification(n => ({ ...n, show: false }));
+        }, 8000);
+      }
+    };
+    
+    window.addEventListener('cc_trigger_notification', handleTriggerNotification);
+    return () => {
+      window.removeEventListener('cc_trigger_notification', handleTriggerNotification);
+      if (hideTimer) clearTimeout(hideTimer);
+    };
+  }, [meds]);
 
   // Load dashboard data on mount
   useEffect(() => {
@@ -823,6 +893,59 @@ export default function DashboardGrid({ onLogout }) {
 
   return (
     <div>
+      {/* Android Push Notification Banner overlay */}
+      <div className={`android-notification-wrapper ${notification.show ? 'show' : ''}`}>
+        <div className="android-notification-card">
+          <div className="android-notification-header">
+            <div className="android-notification-icon">🩺</div>
+            <div className="android-notification-title">{notification.title}</div>
+            <div className="android-notification-time">now</div>
+          </div>
+          <div className="android-notification-body">
+            {notification.body}
+          </div>
+          <div className="android-notification-actions">
+            {notification.type === 'medication' ? (
+              <>
+                <button 
+                  type="button" 
+                  className="android-notification-btn secondary"
+                  onClick={() => handleNotificationAction('dismiss')}
+                >
+                  Dismiss
+                </button>
+                <button 
+                  type="button" 
+                  className="android-notification-btn"
+                  onClick={() => handleNotificationAction('take')}
+                >
+                  Take Now
+                </button>
+              </>
+            ) : (
+              <>
+                <button 
+                  type="button" 
+                  className="android-notification-btn secondary"
+                  onClick={() => handleNotificationAction('dismiss')}
+                >
+                  Dismiss
+                </button>
+                {notification.data?.alertId === 'bp_spike' && (
+                  <button 
+                    type="button" 
+                    className="android-notification-btn"
+                    onClick={() => handleNotificationAction('retest')}
+                  >
+                    Retest
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Dashboard Top Header Bar */}
       <header className="dashboard-header">
         <div className="user-badge">
@@ -1598,6 +1721,7 @@ export default function DashboardGrid({ onLogout }) {
                   </span>
                 </div>
               ))}
+              <div ref={chatMessagesEndRef} />
             </div>
 
             <form onSubmit={handleSendMessage} className="chat-input-bar">

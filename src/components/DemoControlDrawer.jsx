@@ -16,6 +16,29 @@ export default function DemoControlDrawer({ onReload }) {
     window.location.reload();
   };
 
+  const triggerDemoNotification = (type) => {
+    let detail = {};
+    if (type === 'medication') {
+      detail = {
+        title: '💊 Medication Reminder',
+        body: 'Metformin 500mg is due now. Please take it and record compliance.',
+        type: 'medication',
+        data: { medId: 'metformin' }
+      };
+    } else {
+      detail = {
+        title: '🚨 Critical Vitals Warning',
+        body: 'Alert: Your recent blood pressure reading exceeds your target limits (142/92 mmHg). Stage 2 Hypertension detected.',
+        type: 'critical_vital',
+        data: { alertId: 'bp_spike' }
+      };
+    }
+    
+    const event = new CustomEvent('cc_trigger_notification', { detail });
+    window.dispatchEvent(event);
+    setIsOpen(false);
+  };
+
   const handleSeed = async (scenario) => {
     setIsSeeding(true);
     setActiveScenario(scenario);
@@ -187,6 +210,30 @@ export default function DemoControlDrawer({ onReload }) {
             <span style={{ fontSize: '0.65rem', color: 'var(--mute)', display: 'block', marginTop: '4px' }}>
               Default: Local Host or Emulator (10.0.2.2)
             </span>
+          </div>
+
+          <div style={{ borderTop: '1px solid var(--hairline-soft)', paddingTop: '10px', marginTop: '4px' }}>
+            <span style={{ fontWeight: '600', fontSize: '0.8rem', color: 'var(--ink)', display: 'block', marginBottom: '6px' }}>
+              🔔 Simulate Push Alerts
+            </span>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ flex: 1, fontSize: '0.72rem', padding: '6px 8px', height: 'auto', borderRadius: 'var(--radius-sm)' }}
+                onClick={() => triggerDemoNotification('medication')}
+              >
+                💊 Pill Reminder
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ flex: 1, fontSize: '0.72rem', padding: '6px 8px', height: 'auto', borderRadius: 'var(--radius-sm)' }}
+                onClick={() => triggerDemoNotification('vital')}
+              >
+                🚨 Vitals Alert
+              </button>
+            </div>
           </div>
         </div>
       )}
