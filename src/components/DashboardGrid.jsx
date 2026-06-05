@@ -884,7 +884,7 @@ export default function DashboardGrid({ onLogout }) {
             💡 Prompt Lab
           </button>
           <button className="btn-danger no-print" onClick={onLogout}>
-            Sign Out
+            Clear Profile
           </button>
         </div>
       </header>

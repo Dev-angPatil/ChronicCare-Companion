@@ -13,7 +13,9 @@ const getApiBaseUrl = () => {
     navigator.userAgent?.includes('Capacitor') || 
     (typeof window.Capacitor !== 'undefined');
   
-  return isCapacitor ? 'http://10.0.2.2:5000/api' : 'http://localhost:5000/api';
+  // For Android Emulator use 10.0.2.2, for real devices use the machine's local IP
+  const machineIp = '10.125.93.85';
+  return isCapacitor ? `http://${machineIp}:5000/api` : 'http://localhost:5000/api';
 };
 
 const API_BASE_URL = getApiBaseUrl();

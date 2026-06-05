@@ -101,12 +101,12 @@ function App() {
 
   // 4. Return User Primary Dashboard
   return (
-    <>
+    <div className="android-fade-in">
       <GlowBackground />
       <DashboardGrid 
         onLogout={logout} 
       />
-    </>
+    </div>
   );
 }
 

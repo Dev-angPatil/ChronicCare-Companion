@@ -978,3 +978,41 @@ h1, h2, h3, h4, h5, h6 {
     page-break-inside: avoid;
   }
 }
+
+/* NATIVE ANDROID MOBILE APP ANIMATIONS & TAP STATES */
+.android-fade-in {
+  animation: androidFadeIn 0.4s cubic-bezier(0.1, 0.76, 0.55, 0.94) forwards;
+}
+
+.android-slide-in-right {
+  animation: androidSlideInRight 0.45s cubic-bezier(0.1, 0.76, 0.55, 0.94) forwards;
+}
+
+.android-slide-in-up {
+  animation: androidSlideInUp 0.5s cubic-bezier(0.1, 0.76, 0.55, 0.94) forwards;
+}
+
+@keyframes androidFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes androidSlideInRight {
+  from { transform: translateX(30px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes androidSlideInUp {
+  from { transform: translateY(40px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* Tactile scale feedback when tapping buttons/cards on Android */
+.btn-primary:active,
+.btn-secondary:active,
+.btn-danger:active,
+.glass-panel:active,
+.metric-card:active {
+  transform: scale(0.97);
+  transition: transform 0.08s ease-out;
+}

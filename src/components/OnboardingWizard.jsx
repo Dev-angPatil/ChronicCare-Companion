@@ -138,7 +138,7 @@ export default function OnboardingWizard({ onComplete }) {
 
         {/* STEP 1: Profile Setup */}
         {step === 1 && (
-          <div className="wizard-step-content">
+          <div className="wizard-step-content android-slide-in-right">
             <h3 className="heading-card">Step 1: Patient Profile & Physician</h3>
             
             <div>
@@ -295,7 +295,7 @@ export default function OnboardingWizard({ onComplete }) {
 
         {/* STEP 2: Medications */}
         {step === 2 && (
-          <div className="wizard-step-content">
+          <div className="wizard-step-content android-slide-in-right">
             <h3 className="heading-card">Step 2: Active Prescriptions</h3>
             <p className="text-secondary text-sm">
               Define the daily medications you need to track compliance for.
@@ -367,7 +367,7 @@ export default function OnboardingWizard({ onComplete }) {
 
         {/* STEP 3: Baseline Log Entry */}
         {step === 3 && (
-          <div className="wizard-step-content">
+          <div className="wizard-step-content android-slide-in-right">
             <h3 className="heading-card">Step 3: Baseline Check-in</h3>
             <p className="text-secondary text-sm">
               Log your initial biometric values for today to initialize the clinical prediction engine.
