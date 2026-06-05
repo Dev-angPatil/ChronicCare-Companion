@@ -2,7 +2,21 @@
    BACKEND REST API INTEGRATION CLIENT (src/utils/db.js)
    ---------------------------------------------------- */
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const getApiBaseUrl = () => {
+  if (typeof window === 'undefined') return 'http://localhost:5000/api';
+  const customIp = localStorage.getItem('cc_custom_server_ip');
+  if (customIp) {
+    return `http://${customIp}/api`;
+  }
+  const isCapacitor = window.origin?.includes('capacitor://') || 
+    window.location?.href?.includes('capacitor://') || 
+    navigator.userAgent?.includes('Capacitor') || 
+    (typeof window.Capacitor !== 'undefined');
+  
+  return isCapacitor ? 'http://10.0.2.2:5000/api' : 'http://localhost:5000/api';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 export const isCloudEnabled = true;
 

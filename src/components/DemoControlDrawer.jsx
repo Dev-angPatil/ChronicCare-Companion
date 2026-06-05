@@ -5,6 +5,16 @@ export default function DemoControlDrawer({ onReload }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
   const [activeScenario, setActiveScenario] = useState('');
+  const [customIp, setCustomIp] = useState(localStorage.getItem('cc_custom_server_ip') || '');
+
+  const saveCustomIp = () => {
+    if (customIp.trim()) {
+      localStorage.setItem('cc_custom_server_ip', customIp.trim());
+    } else {
+      localStorage.removeItem('cc_custom_server_ip');
+    }
+    window.location.reload();
+  };
 
   const handleSeed = async (scenario) => {
     setIsSeeding(true);
@@ -135,6 +145,48 @@ export default function DemoControlDrawer({ onReload }) {
             >
               🟣 {isSeeding && activeScenario === 'anxiety_vagal' ? 'Injecting...' : 'Anxiety Vagal HR Coupling'}
             </button>
+          </div>
+
+          <div style={{ borderTop: '1px solid var(--hairline-soft)', paddingTop: '10px', marginTop: '4px' }}>
+            <span style={{ fontWeight: '600', fontSize: '0.8rem', color: 'var(--ink)', display: 'block', marginBottom: '6px' }}>
+              🌐 Server Connection Config
+            </span>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <input
+                type="text"
+                placeholder="e.g. 192.168.1.100:5000"
+                value={customIp}
+                onChange={(e) => setCustomIp(e.target.value)}
+                style={{
+                  flex: 1,
+                  fontSize: '0.75rem',
+                  padding: '6px 8px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--hairline)',
+                  backgroundColor: 'var(--card, #ffffff)',
+                  color: 'var(--ink)'
+                }}
+              />
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={saveCustomIp}
+                style={{
+                  fontSize: '0.75rem',
+                  padding: '6px 10px',
+                  height: 'auto',
+                  lineHeight: '1',
+                  borderRadius: 'var(--radius-sm)',
+                  backgroundColor: 'var(--ink)',
+                  color: 'var(--canvas)'
+                }}
+              >
+                Save
+              </button>
+            </div>
+            <span style={{ fontSize: '0.65rem', color: 'var(--mute)', display: 'block', marginTop: '4px' }}>
+              Default: Local Host or Emulator (10.0.2.2)
+            </span>
           </div>
         </div>
       )}
